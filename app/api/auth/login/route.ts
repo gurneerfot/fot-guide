@@ -59,9 +59,19 @@ export async function POST(request: Request) {
     )
   }
 
+  if (user.accessExpiresAt <= new Date()) {
+    await recordLoginAttempt(db, ip, false)
+    return NextResponse.json({ error: 'This access code has expired.' }, { status: 403 })
+  }
+
   // Signing in here signs this code out everywhere else.
   await createSession(
-    { id: user.id, name: user.name, email: user.email },
+    {
+      id: user.id,
+      name: user.name,
+      email: user.email,
+      accessExpiresAt: user.accessExpiresAt,
+    },
     { userAgent: request.headers.get('user-agent'), ip },
   )
   await recordLoginAttempt(db, ip, true)

@@ -7,6 +7,11 @@ import { hash, verify } from '@node-rs/argon2'
  * message. Dropping vowels also stops the generator producing a real word.
  */
 const ALPHABET = 'BCDFGHJKMNPQRTVWXYZ23456789'
+export const ACCESS_CODE_LIFETIME_DAYS = 45
+
+export function accessCodeExpiry(from = new Date()): Date {
+  return new Date(from.getTime() + ACCESS_CODE_LIFETIME_DAYS * 24 * 60 * 60 * 1000)
+}
 
 /** `FOT-7K2M-4QX9`. The dashes are cosmetic; `normalizeCode` strips them. */
 export function generateCode(): string {

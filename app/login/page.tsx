@@ -10,6 +10,7 @@ const NOTICE: Record<string, string> = {
   superseded:
     'Your code was used to sign in on another device, so you were signed out here. Your access code works on one device at a time.',
   disabled: 'This account is no longer active. Please contact Français on Tips.',
+  expired: 'This temporary access code has expired.',
 }
 
 export default async function LoginPage({

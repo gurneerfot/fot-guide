@@ -28,6 +28,7 @@ export type SessionState =
   | { status: 'active'; session: Session }
   | { status: 'none' }
   | { status: 'superseded' }
+  | { status: 'expired' }
   | { status: 'disabled' }
 
 function secret(): Uint8Array {
@@ -41,9 +42,14 @@ function secret(): Uint8Array {
  * one live session; that is the whole anti-sharing design.
  */
 export async function createSession(
-  user: { id: string; name: string; email: string },
+  user: { id: string; name: string; email: string; accessExpiresAt: Date },
   device: { userAgent: string | null; ip: string },
 ): Promise<Session> {
+  const maxAge = Math.min(
+    MAX_AGE_SECONDS,
+    Math.max(1, Math.floor((user.accessExpiresAt.getTime() - Date.now()) / 1000)),
+  )
+
   const [row] = await db
     .insert(sessions)
     .values({ userId: user.id, userAgent: device.userAgent, ip: device.ip })
@@ -60,7 +66,7 @@ export async function createSession(
     .setProtectedHeader({ alg: 'HS256' })
     .setSubject(user.id)
     .setIssuedAt()
-    .setExpirationTime(`${MAX_AGE_SECONDS}s`)
+    .setExpirationTime(`${maxAge}s`)
     .sign(secret())
 
   const store = await cookies()
@@ -69,7 +75,7 @@ export async function createSession(
     secure: process.env.NODE_ENV === 'production',
     sameSite: 'lax',
     path: '/',
-    maxAge: MAX_AGE_SECONDS,
+    maxAge,
   })
 
   return { userId: user.id, sessionId: row.id, name: user.name, email: user.email }
@@ -109,6 +115,7 @@ export const getSessionState = cache(async (): Promise<SessionState> => {
       name: users.name,
       email: users.email,
       userStatus: users.status,
+      accessExpiresAt: users.accessExpiresAt,
     })
     .from(sessions)
     .innerJoin(users, eq(users.id, sessions.userId))
@@ -120,6 +127,7 @@ export const getSessionState = cache(async (): Promise<SessionState> => {
     return row.endedBy === 'superseded' ? { status: 'superseded' } : { status: 'none' }
   }
   if (row.userStatus === 'disabled') return { status: 'disabled' }
+  if (row.accessExpiresAt <= new Date()) return { status: 'expired' }
 
   if (Date.now() - row.lastSeenAt.getTime() > TOUCH_AFTER_MS) {
     await db.update(sessions).set({ lastSeenAt: new Date() }).where(eq(sessions.id, sessionId))

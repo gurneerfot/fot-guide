@@ -22,6 +22,20 @@
       "when": 1787964321155,
       "tag": "0002_cart_orders_and_all_in_prices",
       "breakpoints": true
+    },
+    {
+      "idx": 3,
+      "version": "7",
+      "when": 1788014975295,
+      "tag": "0003_fair_thunderbolt_ross",
+      "breakpoints": true
+    },
+    {
+      "idx": 4,
+      "version": "7",
+      "when": 1788015227586,
+      "tag": "0004_aberrant_reaper",
+      "breakpoints": true
     }
   ]
 }

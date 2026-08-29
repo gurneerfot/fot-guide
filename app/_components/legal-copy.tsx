@@ -26,8 +26,8 @@ export const terms = {
       <p>
         You are buying <strong>online access</strong> to study material, not a
         downloadable file. Access is granted to one account, identified by the access
-        code we issue you after payment. The material is readable in your browser for
-        as long as your account remains active.
+        code we issue you after payment. Purchased material remains readable in your
+        browser for <strong>45 days from the time the access code is issued</strong>.
       </p>
 
       <h2>Your access code</h2>

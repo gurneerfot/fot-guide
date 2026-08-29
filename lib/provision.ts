@@ -1,6 +1,6 @@
 import { eq, sql } from 'drizzle-orm'
 import { db, entitlements, payments, users } from '@/db'
-import { codeIndex, generateCode, hashCode } from '@/lib/auth/code'
+import { accessCodeExpiry, codeIndex, generateCode, hashCode } from '@/lib/auth/code'
 
 /**
  * Turns a captured payment into whatever it bought.
@@ -22,9 +22,9 @@ export type SettledOrder = {
   name: string
   phone: string | null
   /**
-   * Plaintext, and only when this order created the account — the one moment it
-   * is ever readable. Null for a repeat buyer, whose existing code still works
-   * and is argon2-hashed, and for a basket with nothing to read in it.
+   * Plaintext when this order created the account or replaced an expired code —
+   * the only moments it is readable. Null for a repeat buyer whose existing
+   * code still works, and for a basket with nothing to read in it.
    */
   code: string | null
   /** Titles, for the email. Empty when the basket held no material. */
@@ -121,6 +121,18 @@ export async function provisionPayment(razorpayOrderId: string): Promise<Provisi
 
       if (existing) {
         userId = existing.id
+        if (existing.accessExpiresAt <= new Date()) {
+          const fresh = await uniqueCode()
+          code = fresh.code
+          await tx
+            .update(users)
+            .set({
+              codeIndex: fresh.index,
+              codeHash: fresh.hash,
+              accessExpiresAt: accessCodeExpiry(),
+            })
+            .where(eq(users.id, existing.id))
+        }
       } else {
         const fresh = await uniqueCode()
         code = fresh.code

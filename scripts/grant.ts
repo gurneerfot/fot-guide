@@ -5,6 +5,7 @@
  *   pnpm grant --publish tef-guide
  *   pnpm grant --unpublish tef-guide
  *   pnpm grant --give someone@example.com --product tef-guide --name "Priya S"
+ *   pnpm grant --trial tester@example.com --product tef-guide
  *   pnpm grant --reissue someone@example.com
  *   pnpm grant --payments
  *
@@ -14,7 +15,7 @@
  */
 import { eq, sql } from 'drizzle-orm'
 import { db, entitlements, products, users } from '../db'
-import { codeIndex, generateCode, hashCode } from '../lib/auth/code'
+import { accessCodeExpiry, codeIndex, generateCode, hashCode } from '../lib/auth/code'
 import { formatCad, estimatedNetCents } from '../lib/money'
 
 function arg(name: string): string | undefined {
@@ -162,6 +163,47 @@ async function give(email: string, slug: string, name: string) {
   console.log(code ? `Access code: ${code}` : 'They keep their existing access code.')
 }
 
+/** Creates a separate, automatically expiring account for demos and testing. */
+async function createTrial(email: string, slug: string, name: string) {
+  const [product] = await db.select().from(products).where(eq(products.slug, slug)).limit(1)
+  if (!product) return console.error(`No product with slug "${slug}"`)
+  if (product.kind !== 'reader') {
+    return console.error(`"${slug}" is a service product. There is nothing here to read.`)
+  }
+
+  const [existing] = await db
+    .select({ id: users.id })
+    .from(users)
+    .where(sql`lower(${users.email}) = lower(${email})`)
+    .limit(1)
+  if (existing) {
+    return console.error(
+      `An account already exists for ${email}. Use a unique test email so a buyer is not changed.`,
+    )
+  }
+
+  const fresh = await uniqueCode()
+  const accessExpiresAt = accessCodeExpiry()
+
+  await db.transaction(async (tx) => {
+    const [user] = await tx
+      .insert(users)
+      .values({
+        codeIndex: fresh.index,
+        codeHash: fresh.hash,
+        name,
+        email,
+        accessExpiresAt,
+      })
+      .returning({ id: users.id })
+    await tx.insert(entitlements).values({ userId: user.id, productId: product.id })
+  })
+
+  console.log(`Granted temporary access to "${product.title}" for ${email}.`)
+  console.log(`Access code: ${fresh.code}`)
+  console.log(`Expires: ${accessExpiresAt.toISOString()}`)
+}
+
 /** For a buyer who lost their code. The old one stops working immediately —
  *  which is also how you cut off a code that has been passed around. */
 async function reissue(email: string) {
@@ -173,11 +215,13 @@ async function reissue(email: string) {
   if (!user) return console.error(`No account for ${email}`)
 
   const fresh = await uniqueCode()
+  const accessExpiresAt = accessCodeExpiry()
   await db
     .update(users)
-    .set({ codeIndex: fresh.index, codeHash: fresh.hash })
+    .set({ codeIndex: fresh.index, codeHash: fresh.hash, accessExpiresAt })
     .where(eq(users.id, user.id))
   console.log(`New access code for ${user.name} <${user.email}>: ${fresh.code}`)
+  console.log(`Expires: ${accessExpiresAt.toISOString()}`)
   console.log('Their previous code no longer works.')
 }
 
@@ -229,6 +273,7 @@ async function main() {
   const publish = arg('publish')
   const unpublish = arg('unpublish')
   const giveTo = arg('give')
+  const trialTo = arg('trial')
   const reissueTo = arg('reissue')
 
   const addServiceSlug = arg('add-service')
@@ -237,7 +282,10 @@ async function main() {
   else if (has('payments')) await listPayments()
   else if (publish) await setPublished(publish, true)
   else if (unpublish) await setPublished(unpublish, false)
-  else if (giveTo) {
+  else if (trialTo) {
+    if (!product) return console.error('--trial also needs --product <slug>')
+    await createTrial(trialTo, product, arg('name') ?? 'Temporary Tester')
+  } else if (giveTo) {
     if (!product) return console.error('--give also needs --product <slug>')
     await give(giveTo, product, arg('name') ?? giveTo.split('@')[0])
   } else if (addServiceSlug) {
@@ -257,6 +305,7 @@ async function main() {
         '  pnpm grant --publish <slug>',
         '  pnpm grant --unpublish <slug>',
         '  pnpm grant --give <email> --product <slug> [--name "Full Name"]',
+        '  pnpm grant --trial <email> --product <slug> [--name "Full Name"]',
         '  pnpm grant --reissue <email>',
         '  pnpm grant --add-service <slug> --title "…" --price <CAD> [--summary "…"]',
       ].join('\n'),

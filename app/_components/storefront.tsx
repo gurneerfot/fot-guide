@@ -271,7 +271,7 @@ function ProductCard({
         <p className="flex items-center gap-2.5 text-sm text-ink-soft">
           <Badge className="size-4 shrink-0 text-rouge" />
           {isReader
-            ? `Instant access${product.pageCount > 0 ? ` · ${product.pageCount} pages` : ''}`
+            ? `45 days of access${product.pageCount > 0 ? ` · ${product.pageCount} pages` : ''}`
             : 'Arrange on WhatsApp after purchase'}
         </p>
 
@@ -361,6 +361,12 @@ function Cart({
           <p className="mt-1.5 text-xs text-ink-soft">
             All taxes and charges included. Nothing is added at the payment step.
           </p>
+          {lines.some((line) => line.kind === 'reader') && (
+            <p className="mt-2 text-xs leading-relaxed text-ink-soft">
+              Purchased study-material access lasts 45 days from the time your access code
+              is issued.
+            </p>
+          )}
 
           <form onSubmit={onSubmit} className="mt-6 space-y-4">
             <Field

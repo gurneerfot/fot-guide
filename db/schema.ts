@@ -62,6 +62,12 @@ export const users = pgTable(
     email: text('email').notNull(),
     phone: text('phone'),
     status: userStatusEnum('status').notNull().default('active'),
+    /**
+     * Every code lasts 45 days. Reissuing a code resets this timestamp.
+     */
+    accessExpiresAt: timestamp('access_expires_at', { withTimezone: true })
+      .notNull()
+      .default(sql`now() + interval '45 days'`),
     createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
   },
   (t) => [
