@@ -1,7 +1,7 @@
 /**
  * Turns a PDF into the page images the reader serves.
  *
- *   pnpm ingest --pdf ./material.pdf --slug tef-guide --title "TEF Canada Guide" --price 28
+ *   pnpm ingest --pdf ./material.pdf --slug tef-guide --title "TEF Canada Guide" --price 28 --price-inr 1899
  *
  * Runs on a laptop, never in production: `pdftoppm` (poppler) is a system
  * binary that Vercel does not have. The output is committed-adjacent content
@@ -39,7 +39,7 @@ function required(name: string): string {
   if (!value) {
     console.error(`Missing --${name}`)
     console.error(
-      'Usage: pnpm ingest --pdf <file> --slug <slug> --title <title> --price <CAD> [--dpi 150]',
+      'Usage: pnpm ingest --pdf <file> --slug <slug> --title <title> --price <CAD> --price-inr <INR> [--dpi 150]',
     )
     process.exit(1)
   }
@@ -51,11 +51,16 @@ async function main() {
   const slug = required('slug')
   const title = required('title')
   const priceCad = Number(required('price'))
+  const priceInr = Number(required('price-inr'))
   const dpi = Number(arg('dpi') ?? DEFAULT_DPI)
   const summary = arg('summary') ?? ''
 
   if (!Number.isFinite(priceCad) || priceCad <= 0) {
     console.error('--price must be a positive amount in Canadian dollars, e.g. 28')
+    process.exit(1)
+  }
+  if (!Number.isFinite(priceInr) || priceInr <= 0) {
+    console.error('--price-inr must be a positive amount in Indian rupees, e.g. 1899')
     process.exit(1)
   }
   if (!/^[a-z0-9][a-z0-9-]*$/.test(slug)) {
@@ -126,6 +131,7 @@ async function main() {
         .set({
           title,
           priceCents: Math.round(priceCad * 100),
+          priceInrPaise: Math.round(priceInr * 100),
           pageCount: pages.length,
           ...(summary ? { summary } : {}),
         })
@@ -141,6 +147,7 @@ async function main() {
           // with `pnpm grant --add-service` instead.
           kind: 'reader',
           priceCents: Math.round(priceCad * 100),
+          priceInrPaise: Math.round(priceInr * 100),
           pageCount: pages.length,
           // Deliberately off. Rendering is not the same as being ready to sell —
           // flip it on once you have looked at the pages.

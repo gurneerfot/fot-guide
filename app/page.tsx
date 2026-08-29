@@ -20,8 +20,8 @@ export default async function StorefrontPage() {
           <span aria-hidden className="mx-auto mt-6 block h-[3px] w-16 rounded-full bg-rouge" />
           <p className="mx-auto mt-7 max-w-xl text-read text-ink-soft">
             A guide you read online, mock tests marked by us, and one-to-one
-            lessons. Add what you need and pay for it together — prices are in
-            Canadian dollars with everything included.
+            lessons. Add what you need and pay for it together — choose Canadian
+            dollars or Indian rupees, with everything included.
           </p>
         </header>
 
@@ -43,6 +43,8 @@ export default async function StorefrontPage() {
               kind: product.kind,
               priceCents: product.priceCents,
               listPriceCents: product.listPriceCents,
+              priceInrPaise: product.priceInrPaise,
+              listPriceInrPaise: product.listPriceInrPaise,
               pageCount: product.pageCount,
             }))}
           />

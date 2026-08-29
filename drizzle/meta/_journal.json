@@ -36,6 +36,20 @@
       "when": 1788015227586,
       "tag": "0004_aberrant_reaper",
       "breakpoints": true
+    },
+    {
+      "idx": 5,
+      "version": "7",
+      "when": 1788019837080,
+      "tag": "0005_overrated_blonde_phantom",
+      "breakpoints": true
+    },
+    {
+      "idx": 6,
+      "version": "7",
+      "when": 1788021186656,
+      "tag": "0006_set-inr-price-1899",
+      "breakpoints": true
     }
   ]
 }

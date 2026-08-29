@@ -25,6 +25,7 @@ export const userStatusEnum = pgEnum('user_status', ['active', 'disabled'])
  * creates no account, because there is nothing on this site for them to open.
  */
 export const productKindEnum = pgEnum('product_kind', ['reader', 'service'])
+export const currencyEnum = pgEnum('currency', ['CAD', 'INR'])
 export const sessionEndedEnum = pgEnum('session_ended', ['signed_out', 'superseded'])
 
 /**
@@ -119,14 +120,14 @@ export const products = pgTable(
     /** Shown on the storefront card. Plain text, not markup. */
     summary: text('summary').notNull().default(''),
     kind: productKindEnum('kind').notNull().default('reader'),
-    /**
-     * CAD cents, integer. All-in: exactly what the card is charged. Razorpay's
-     * fee and the CAD→INR conversion spread come out of this, they are not
-     * added on top, so the buyer never meets a number they did not agree to.
-     */
+    /** CAD cents. All-in: exactly what the card is charged. */
     priceCents: integer('price_cents').notNull(),
     /** Struck through next to the price when set. Cosmetic only. */
     listPriceCents: integer('list_price_cents'),
+    /** INR paise. Maintained separately so checkout never depends on a live FX rate. */
+    priceInrPaise: integer('price_inr_paise').notNull(),
+    /** Struck through next to the INR price when set. Cosmetic only. */
+    listPriceInrPaise: integer('list_price_inr_paise'),
     pageCount: integer('page_count').notNull().default(0),
     isActive: boolean('is_active').notNull().default(false),
     createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
@@ -134,6 +135,7 @@ export const products = pgTable(
   (t) => [
     uniqueIndex('products_slug_uq').on(t.slug),
     check('products_price_positive', sql`${t.priceCents} > 0`),
+    check('products_inr_price_positive', sql`${t.priceInrPaise} > 0`),
     // A reader product with no pages is a book with nothing in it; a service
     // product has nothing to paginate. Publishing is gated on this in the CLI,
     // but the constraint is what makes it true.
@@ -199,10 +201,11 @@ export const payments = pgTable(
     name: text('name').notNull(),
     phone: text('phone'),
 
+    /** Identifies whether `amount_cents` contains CAD cents or INR paise. */
+    currency: currencyEnum('currency').notNull().default('CAD'),
     /**
-     * The order total Razorpay charged, in CAD cents. Snapshotted rather than
-     * summed from the items on read, so a later price change cannot rewrite
-     * what someone actually paid.
+     * The order total Razorpay charged, in the currency's minor unit.
+     * Snapshotted so a later price change cannot rewrite what was paid.
      */
     amountCents: integer('amount_cents').notNull(),
     status: paymentStatusEnum('status').notNull().default('created'),
@@ -242,7 +245,7 @@ export const paymentItems = pgTable(
     productId: uuid('product_id')
       .notNull()
       .references(() => products.id, { onDelete: 'restrict' }),
-    /** Snapshotted from the product at checkout. */
+    /** Snapshotted in the parent payment's currency-specific minor unit. */
     unitPriceCents: integer('unit_price_cents').notNull(),
   },
   (t) => [

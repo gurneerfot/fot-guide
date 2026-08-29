@@ -16,7 +16,7 @@
 import { eq, sql } from 'drizzle-orm'
 import { db, entitlements, products, users } from '../db'
 import { accessCodeExpiry, codeIndex, generateCode, hashCode } from '../lib/auth/code'
-import { formatCad, estimatedNetCents } from '../lib/money'
+import { estimatedNetMinor, formatMoney, type Currency } from '../lib/money'
 
 function arg(name: string): string | undefined {
   const index = process.argv.indexOf(`--${name}`)
@@ -48,8 +48,10 @@ async function listProducts() {
     // the currency conversion. An estimate — Razorpay's dashboard is the truth.
     console.log(
       `${row.isActive ? '● live  ' : '○ draft '} ${row.slug.padEnd(20)} ` +
-        `${row.kind.padEnd(8)} ${formatCad(row.priceCents).padStart(10)} ` +
-        `(net ~${formatCad(estimatedNetCents(row.priceCents)).padStart(10)})  ` +
+        `${row.kind.padEnd(8)} ${formatMoney(row.priceCents, 'CAD').padStart(10)} / ` +
+        `${formatMoney(row.priceInrPaise, 'INR').padStart(9)} ` +
+        `(net ~${formatMoney(estimatedNetMinor(row.priceCents, 'CAD'), 'CAD')} / ` +
+        `${formatMoney(estimatedNetMinor(row.priceInrPaise, 'INR'), 'INR')})  ` +
         `${row.kind === 'reader' ? `${String(row.pageCount).padStart(4)}pp` : '    —'}  ${row.title}`,
     )
   }
@@ -62,14 +64,24 @@ async function listProducts() {
  * and these have none. Re-running with the same slug updates the price and
  * title, matching how ingest behaves.
  */
-async function addService(slug: string, title: string, priceCad: number, summary: string) {
+async function addService(
+  slug: string,
+  title: string,
+  priceCad: number,
+  priceInr: number,
+  summary: string,
+) {
   if (!/^[a-z0-9][a-z0-9-]*$/.test(slug)) {
     return console.error('--slug must be lowercase letters, digits and dashes')
   }
   if (!Number.isFinite(priceCad) || priceCad <= 0) {
     return console.error('--price must be a positive amount in Canadian dollars, e.g. 25')
   }
+  if (!Number.isFinite(priceInr) || priceInr <= 0) {
+    return console.error('--price-inr must be a positive amount in Indian rupees, e.g. 1899')
+  }
   const priceCents = Math.round(priceCad * 100)
+  const priceInrPaise = Math.round(priceInr * 100)
 
   const [existing] = await db.select().from(products).where(eq(products.slug, slug)).limit(1)
   if (existing && existing.kind !== 'service') {
@@ -82,10 +94,10 @@ async function addService(slug: string, title: string, priceCad: number, summary
   if (existing) {
     await db
       .update(products)
-      .set({ title, priceCents, ...(summary ? { summary } : {}) })
+      .set({ title, priceCents, priceInrPaise, ...(summary ? { summary } : {}) })
       .where(eq(products.id, existing.id))
     console.log(
-      `Updated ${slug} — ${formatCad(priceCents)} (net ~${formatCad(estimatedNetCents(priceCents))}).`,
+      `Updated ${slug} — ${formatMoney(priceCents, 'CAD')} / ${formatMoney(priceInrPaise, 'INR')}.`,
     )
     return
   }
@@ -96,12 +108,13 @@ async function addService(slug: string, title: string, priceCad: number, summary
     summary,
     kind: 'service',
     priceCents,
+    priceInrPaise,
     // Deliberately off, exactly as ingest leaves a book: read the copy on the
     // storefront before it can take money.
     isActive: false,
   })
   console.log(
-    `Created draft ${slug} — ${formatCad(priceCents)} (net ~${formatCad(estimatedNetCents(priceCents))}).`,
+    `Created draft ${slug} — ${formatMoney(priceCents, 'CAD')} / ${formatMoney(priceInrPaise, 'INR')}.`,
   )
   console.log(`Publish with: pnpm grant --publish ${slug}`)
 }
@@ -229,7 +242,7 @@ async function listPayments() {
   // One row per order with its lines rolled up, rather than one row per line —
   // a basket of three should read as one payment, because it was one charge.
   const result = await db.execute(sql`
-    select p.created_at, p.email, p.status, p.amount_cents, p.provisioned_at,
+    select p.created_at, p.email, p.status, p.currency, p.amount_cents, p.provisioned_at,
            string_agg(pr.title, ', ' order by pr.title) as titles,
            bool_or(pr.kind = 'service') as has_service
     from payments p
@@ -246,6 +259,7 @@ async function listPayments() {
     created_at: string
     email: string
     status: string
+    currency: Currency
     amount_cents: number
     provisioned_at: string | null
     titles: string | null
@@ -262,7 +276,7 @@ async function listPayments() {
     const followUp = row.has_service && row.status === 'paid' ? '  → follow up' : ''
     console.log(
       `${new Date(row.created_at).toISOString().slice(0, 16).replace('T', ' ')}  ` +
-        `${row.status.padEnd(8)} ${formatCad(row.amount_cents).padStart(10)}  ` +
+        `${row.status.padEnd(8)} ${formatMoney(row.amount_cents, row.currency).padStart(10)}  ` +
         `${row.email.padEnd(30)} ${row.titles ?? '(no items)'}${flag}${followUp}`,
     )
   }
@@ -291,10 +305,13 @@ async function main() {
   } else if (addServiceSlug) {
     const title = arg('title')
     const price = arg('price')
-    if (!title || !price) {
-      return console.error('--add-service also needs --title "…" and --price <CAD>')
+    const priceInr = arg('price-inr')
+    if (!title || !price || !priceInr) {
+      return console.error(
+        '--add-service also needs --title "…", --price <CAD>, and --price-inr <INR>',
+      )
     }
-    await addService(addServiceSlug, title, Number(price), arg('summary') ?? '')
+    await addService(addServiceSlug, title, Number(price), Number(priceInr), arg('summary') ?? '')
   } else if (reissueTo) await reissue(reissueTo)
   else {
     console.log(
@@ -307,7 +324,7 @@ async function main() {
         '  pnpm grant --give <email> --product <slug> [--name "Full Name"]',
         '  pnpm grant --trial <email> --product <slug> [--name "Full Name"]',
         '  pnpm grant --reissue <email>',
-        '  pnpm grant --add-service <slug> --title "…" --price <CAD> [--summary "…"]',
+        '  pnpm grant --add-service <slug> --title "…" --price <CAD> --price-inr <INR> [--summary "…"]',
       ].join('\n'),
     )
   }

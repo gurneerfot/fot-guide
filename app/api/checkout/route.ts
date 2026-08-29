@@ -3,6 +3,7 @@ import { inArray } from 'drizzle-orm'
 import { NextResponse } from 'next/server'
 import { z } from 'zod'
 import { db, paymentItems, payments, products } from '@/db'
+import { priceFor } from '@/lib/money'
 import { createOrder } from '@/lib/razorpay'
 
 export const runtime = 'nodejs'
@@ -14,6 +15,7 @@ export const runtime = 'nodejs'
  * ever read.
  */
 const body = z.object({
+  currency: z.enum(['CAD', 'INR'], { error: 'Choose CAD or INR.' }),
   // A set, not a list: the cart holds one of each, and duplicates would double
   // the total for nothing. Deduplicated here rather than trusted from the client.
   slugs: z
@@ -55,7 +57,7 @@ export async function POST(request: Request) {
       { status: 400 },
     )
   }
-  const { name, email, phone } = parsed.data
+  const { name, email, phone, currency } = parsed.data
   const slugs = [...new Set(parsed.data.slugs)]
 
   const rows = await db.select().from(products).where(inArray(products.slug, slugs))
@@ -83,7 +85,7 @@ export async function POST(request: Request) {
   }
 
   // Prices are all-in: this total is exactly what the card is charged.
-  const amountCents = available.reduce((sum, row) => sum + row.priceCents, 0)
+  const amountMinor = available.reduce((sum, row) => sum + priceFor(row, currency), 0)
 
   // The id is minted here so it can be the Razorpay receipt, which means the
   // order carries our primary key and a support query can go either direction.
@@ -96,10 +98,14 @@ export async function POST(request: Request) {
   let order
   try {
     order = await createOrder({
-      amountCents,
+      amountMinor,
+      currency,
       receipt: paymentId,
       notes: { items: available.map((row) => row.slug).join(','), buyerEmail: email },
     })
+    if (order.amount !== amountMinor || order.currency !== currency) {
+      throw new Error('Razorpay returned an order with the wrong amount or currency')
+    }
   } catch (error) {
     console.error('[checkout] order creation failed', error)
     return NextResponse.json(
@@ -117,7 +123,8 @@ export async function POST(request: Request) {
       email,
       name,
       phone,
-      amountCents,
+      currency,
+      amountCents: amountMinor,
       razorpayOrderId: order.id,
       status: 'created',
     })
@@ -125,14 +132,15 @@ export async function POST(request: Request) {
       available.map((row) => ({
         paymentId,
         productId: row.id,
-        unitPriceCents: row.priceCents,
+        unitPriceCents: priceFor(row, currency),
       })),
     )
   })
 
   return NextResponse.json({
     orderId: order.id,
-    amountCents,
+    amountMinor,
+    currency,
     keyId,
     description:
       available.length === 1 ? available[0].title : `${available.length} items`,

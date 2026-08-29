@@ -33,7 +33,7 @@ reader items and flags the services for follow-up, in **one** email.
 - `jose` for JWT session cookies, argon2 for hashing the access code
 - `sharp` for watermarking page images per request
 - Zod on every request body
-- Razorpay over plain `fetch` — no SDK, charged in CAD
+- Razorpay over plain `fetch` — no SDK, charged in CAD or INR
 
 ## Setup
 
@@ -64,27 +64,26 @@ Production always takes the second path.
 
 ## Prices
 
-Everything is priced in **CAD**, stored as integer cents, and **all-in**: the
-number on the card is exactly what Razorpay charges. Nothing is added at the
-payment step.
+Everything has fixed **CAD and INR** prices, stored as integer cents or paise,
+and is **all-in**: the number on the card is exactly what Razorpay charges.
+Nothing is added at the payment step.
 
-| Product | Price | You keep (approx.) |
-| ------- | ----- | ------------------ |
-| Study guide | CA$28 | ~CA$26.44 |
-| Mock test, per module | CA$28 | ~CA$26.44 |
-| 10-lesson plan | CA$280 | ~CA$264.48 |
+| Product | CAD price | INR price |
+| ------- | --------- | --------- |
+| Study guide | CA$28 | ₹1,899 |
+| Mock test, per module | CA$28 | ₹1,899 |
+| 10-lesson plan | CA$280 | ₹17,999 |
 
-Two costs come out of that, neither of which the buyer ever sees:
+Gateway costs come out of that, never added for the buyer:
 
-- **3.54%** — Razorpay's 3% international card fee plus the 18% GST charged on
-  that fee
-- **~2%** — the CAD→INR conversion spread on settlement, which lives inside the
-  exchange rate rather than as a line item
+- **CAD: ~5.54%** — the 3% international card fee, 18% GST on that fee, and an
+  estimated 2% CAD→INR settlement spread
+- **INR: ~2.36%** — the 2% domestic gateway fee plus 18% GST on that fee
 
-`lib/money.ts` holds the combined estimate (`ESTIMATED_COST_BPS`) so
-`pnpm grant --list` can show what a sale is worth. It is **not** used at
-checkout — prices are set deliberately, not computed — and it is an estimate.
-Razorpay's dashboard is the authority on what was actually deducted.
+`lib/money.ts` holds currency-specific fee estimates so `pnpm grant --list`
+can show what a sale is worth. They are **not** used at checkout — both prices
+are set deliberately, not converted live — and Razorpay's dashboard remains
+the authority on what was actually deducted.
 
 No sales tax is charged or collected, matching a business not registered in
 Canada. To reprice, change the number and re-run the command that created the
@@ -100,10 +99,12 @@ pnpm ingest --pdf ./material.pdf \
             --slug guide-expression-orale-b \
             --title "Guide — Expression Orale, Section B" \
             --price 28 \
+            --price-inr 1899 \
             --summary "Common TEF Canada arguments with suitable responses."
 ```
 
-`--price` is in Canadian dollars, all-in.
+`--price` is in Canadian dollars and `--price-inr` is in Indian rupees. Both
+are all-in.
 
 Each page is rendered at 150dpi, resized to 1400px wide and stored as JPEG in
 `content/pages/<slug>/`. The rendered pages are committed so Vercel can bundle
@@ -126,12 +127,13 @@ These have no pages, so `pnpm ingest` cannot make them:
 ```bash
 pnpm grant --add-service mock-writing \
            --title "TEF Canada Mock — Writing" \
-           --price 25 \
+           --price 28 \
+           --price-inr 1899 \
            --summary "A full-length Expression écrite mock, marked and returned."
 ```
 
 Created inactive, same as a book. Publish with `pnpm grant --publish <slug>`.
-Re-running with the same slug updates the title, price and summary.
+Re-running with the same slug updates the title, both prices and summary.
 
 Three already exist: `mock-reading`, `mock-listening` (CA$28 each) and
 `lessons-10` (CA$280). Adding the two remaining TEF modules is one command each.
@@ -156,7 +158,7 @@ pnpm grant --publish <slug>
 pnpm grant --unpublish <slug>
 pnpm grant --give <email> --product <slug> --name "Full Name"
 pnpm grant --reissue <email>       # lost code, or cutting off a shared one
-pnpm grant --add-service <slug> --title "…" --price <CAD> [--summary "…"]
+pnpm grant --add-service <slug> --title "…" --price <CAD> --price-inr <INR> [--summary "…"]
 ```
 
 `--give` works only on `reader` products. Granting an entitlement to a service
@@ -168,10 +170,10 @@ would put a dead link in someone's library — those are arranged directly.
 
 1. **API keys** — Dashboard → Settings → API Keys. Use `rzp_test_*` until you
    are ready to take real money.
-2. **International Payments** — Dashboard → Settings → Configuration. Orders are
-   created in CAD, and without this enabled Razorpay **rejects every one of
-   them** with a currency error. It does not fall back to INR, which is the
-   right behaviour — a silent fallback would charge ₹25 for a CA$25 product.
+2. **International Payments** — Dashboard → Settings → Configuration. CAD
+   orders require this; INR orders use Razorpay's domestic path. Without it,
+   Razorpay rejects CAD orders with a currency error and does not fall back to
+   INR.
 3. **Webhook** — Dashboard → Settings → Webhooks. Point it at
    `https://<your-domain>/api/webhooks/razorpay`, subscribe to
    **`payment.captured`**, and put its secret in `RAZORPAY_WEBHOOK_SECRET`.

@@ -22,6 +22,7 @@ import {
 import { codeIndex, verifyCode } from '../lib/auth/code'
 import { markPaid, provisionPayment } from '../lib/provision'
 import { hasAccess } from '../lib/entitlement'
+import { priceFor, type Currency, type DualPrice } from '../lib/money'
 
 let failures = 0
 function check(label: string, condition: boolean, detail = '') {
@@ -35,15 +36,18 @@ async function order(input: {
   email: string
   name: string
   phone?: string
-  productIds: { id: string; priceCents: number }[]
+  currency?: Currency
+  productIds: ({ id: string } & DualPrice)[]
 }) {
-  const amountCents = input.productIds.reduce((sum, p) => sum + p.priceCents, 0)
+  const currency = input.currency ?? 'CAD'
+  const amountCents = input.productIds.reduce((sum, p) => sum + priceFor(p, currency), 0)
   const [payment] = await db
     .insert(payments)
     .values({
       email: input.email,
       name: input.name,
       phone: input.phone,
+      currency,
       amountCents,
       razorpayOrderId: input.razorpayOrderId,
     })
@@ -52,7 +56,7 @@ async function order(input: {
     input.productIds.map((p) => ({
       paymentId: payment.id,
       productId: p.id,
-      unitPriceCents: p.priceCents,
+      unitPriceCents: priceFor(p, currency),
     })),
   )
   return payment
@@ -75,17 +79,30 @@ async function main() {
       title: 'TEF Guide',
       kind: 'reader',
       priceCents: 2800,
+      priceInrPaise: 189900,
       pageCount: 3,
       isActive: true,
     })
     .returning()
   const [mockReading] = await db
     .insert(products)
-    .values({ slug: 'mock-reading', title: 'Mock — Reading', kind: 'service', priceCents: 2800 })
+    .values({
+      slug: 'mock-reading',
+      title: 'Mock — Reading',
+      kind: 'service',
+      priceCents: 2800,
+      priceInrPaise: 189900,
+    })
     .returning()
   const [mockListening] = await db
     .insert(products)
-    .values({ slug: 'mock-listening', title: 'Mock — Listening', kind: 'service', priceCents: 2800 })
+    .values({
+      slug: 'mock-listening',
+      title: 'Mock — Listening',
+      kind: 'service',
+      priceCents: 2800,
+      priceInrPaise: 189900,
+    })
     .returning()
 
   console.log('\n1. First purchase — one reader item')
@@ -275,6 +292,25 @@ async function main() {
     duplicateBlocked = true
   }
   check('unique index blocks a duplicated cart line', duplicateBlocked)
+
+  console.log('\n12. INR order — fixed paise prices are snapshotted')
+  const inrOrder = await order({
+    razorpayOrderId: 'order_HHH',
+    email: 'inr@example.com',
+    name: 'INR Buyer',
+    currency: 'INR',
+    productIds: [guide, mockReading],
+  })
+  check('INR currency is stored', inrOrder.currency === 'INR', inrOrder.currency)
+  check('INR total uses fixed prices', inrOrder.amountCents === 379800, `${inrOrder.amountCents}`)
+  const inrLines = await db
+    .select()
+    .from(paymentItems)
+    .where(eq(paymentItems.paymentId, inrOrder.id))
+  check(
+    'INR line prices are snapshotted in paise',
+    inrLines.length === 2 && inrLines.every((line) => line.unitPriceCents === 189900),
+  )
 
   console.log(`\n${failures === 0 ? 'ALL PASSED' : `${failures} FAILED`}`)
   process.exit(failures === 0 ? 0 : 1)

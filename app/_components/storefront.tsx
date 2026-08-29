@@ -2,9 +2,14 @@
 
 import Link from 'next/link'
 import Script from 'next/script'
-import { useMemo, useRef, useState } from 'react'
+import { useEffect, useMemo, useRef, useState } from 'react'
 import { purchaseMessage, whatsappUrl } from '@/lib/contact'
-import { formatCad } from '@/lib/money'
+import {
+  formatMoney,
+  listPriceFor,
+  priceFor,
+  type Currency,
+} from '@/lib/money'
 import { IconBag, IconBook, IconCheck, IconClose, IconLock, IconTeam, IconWhatsApp } from './icons'
 
 /** Razorpay's Checkout attaches this to `window` once its script has loaded. */
@@ -40,6 +45,8 @@ export type StorefrontProduct = {
   kind: 'reader' | 'service'
   priceCents: number
   listPriceCents: number | null
+  priceInrPaise: number
+  listPriceInrPaise: number | null
   pageCount: number
 }
 
@@ -59,10 +66,19 @@ type Phase =
 
 export function Storefront({ products }: { products: StorefrontProduct[] }) {
   const [cart, setCart] = useState<string[]>([])
+  const [currency, setCurrency] = useState<Currency>('CAD')
   const [phase, setPhase] = useState<Phase>({ step: 'browsing' })
   const [scriptReady, setScriptReady] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const cartRef = useRef<HTMLElement>(null)
+
+  useEffect(() => {
+    const frame = window.requestAnimationFrame(() => {
+      const saved = window.localStorage.getItem('fot-currency')
+      if (saved === 'CAD' || saved === 'INR') setCurrency(saved)
+    })
+    return () => window.cancelAnimationFrame(frame)
+  }, [])
 
   const inCart = useMemo(() => new Set(cart), [cart])
   const lines = useMemo(
@@ -72,7 +88,12 @@ export function Storefront({ products }: { products: StorefrontProduct[] }) {
         .filter(Boolean) as StorefrontProduct[],
     [cart, products],
   )
-  const total = lines.reduce((sum, line) => sum + line.priceCents, 0)
+  const total = lines.reduce((sum, line) => sum + priceFor(line, currency), 0)
+
+  function chooseCurrency(next: Currency) {
+    setCurrency(next)
+    window.localStorage.setItem('fot-currency', next)
+  }
 
   function toggle(slug: string) {
     setError(null)
@@ -98,7 +119,8 @@ export function Storefront({ products }: { products: StorefrontProduct[] }) {
     setPhase({ step: 'working' })
     let order: {
       orderId: string
-      amountCents: number
+      amountMinor: number
+      currency: Currency
       keyId: string
       description: string
       prefill: { name: string; email: string; contact: string }
@@ -107,7 +129,7 @@ export function Storefront({ products }: { products: StorefrontProduct[] }) {
       const response = await fetch('/api/checkout', {
         method: 'POST',
         headers: { 'content-type': 'application/json' },
-        body: JSON.stringify({ slugs: cart, name, email, phone }),
+        body: JSON.stringify({ slugs: cart, name, email, phone, currency }),
       })
       const payload = await response.json()
       if (!response.ok) throw new Error(payload.error ?? 'Could not start the payment.')
@@ -120,8 +142,8 @@ export function Storefront({ products }: { products: StorefrontProduct[] }) {
 
     const razorpay = new window.Razorpay({
       key: order.keyId,
-      amount: order.amountCents,
-      currency: 'CAD',
+      amount: order.amountMinor,
+      currency: order.currency,
       name: 'Français on Tips',
       description: order.description,
       order_id: order.orderId,
@@ -180,12 +202,15 @@ export function Storefront({ products }: { products: StorefrontProduct[] }) {
         onError={() => setError('Could not reach the payment provider.')}
       />
 
+      <CurrencyTabs currency={currency} disabled={busy} onChange={chooseCurrency} />
+
       <div className="grid items-start gap-8 lg:grid-cols-[minmax(0,1fr)_23rem] lg:gap-10">
         <section aria-label="Available material" className="space-y-6">
           {products.map((product) => (
             <ProductCard
               key={product.id}
               product={product}
+              currency={currency}
               selected={inCart.has(product.slug)}
               disabled={busy}
               onToggle={() => toggle(product.slug)}
@@ -197,6 +222,7 @@ export function Storefront({ products }: { products: StorefrontProduct[] }) {
           ref={cartRef}
           lines={lines}
           total={total}
+          currency={currency}
           busy={busy}
           scriptReady={scriptReady}
           error={error}
@@ -209,6 +235,7 @@ export function Storefront({ products }: { products: StorefrontProduct[] }) {
         <MobileBar
           count={lines.length}
           total={total}
+          currency={currency}
           onReview={() => cartRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' })}
         />
       )}
@@ -216,21 +243,63 @@ export function Storefront({ products }: { products: StorefrontProduct[] }) {
   )
 }
 
+function CurrencyTabs({
+  currency,
+  disabled,
+  onChange,
+}: {
+  currency: Currency
+  disabled: boolean
+  onChange: (currency: Currency) => void
+}) {
+  return (
+    <div className="mb-8 flex flex-col items-center gap-2">
+      <p className="text-sm font-semibold text-ink">Choose payment currency</p>
+      <div
+        role="group"
+        aria-label="Payment currency"
+        className="inline-flex rounded-lg border border-rule bg-card p-1 shadow-sm"
+      >
+        {(['CAD', 'INR'] as const).map((option) => (
+          <button
+            key={option}
+            type="button"
+            disabled={disabled}
+            aria-pressed={currency === option}
+            onClick={() => onChange(option)}
+            className={`rounded-md px-5 py-2 text-sm font-semibold transition-colors disabled:opacity-50 ${
+              currency === option
+                ? 'bg-ink text-white'
+                : 'text-ink-soft hover:bg-paper hover:text-ink'
+            }`}
+          >
+            {option === 'CAD' ? 'CAD · CA$' : 'INR · ₹'}
+          </button>
+        ))}
+      </div>
+    </div>
+  )
+}
+
 /* ------------------------------------------------------------------ card -- */
 
 function ProductCard({
   product,
+  currency,
   selected,
   disabled,
   onToggle,
 }: {
   product: StorefrontProduct
+  currency: Currency
   selected: boolean
   disabled: boolean
   onToggle: () => void
 }) {
   const isReader = product.kind === 'reader'
   const Badge = isReader ? IconBook : IconTeam
+  const price = priceFor(product, currency)
+  const listPrice = listPriceFor(product, currency)
 
   return (
     <article
@@ -251,11 +320,11 @@ function ProductCard({
         </h2>
         <div className="shrink-0 text-right">
           <span className="font-display text-xl font-bold text-rouge sm:text-2xl">
-            {formatCad(product.priceCents)}
+            {formatMoney(price, currency)}
           </span>
-          {product.listPriceCents != null && product.listPriceCents > product.priceCents && (
+          {listPrice != null && listPrice > price && (
             <span className="ml-2 text-sm text-ink-soft line-through">
-              {formatCad(product.listPriceCents)}
+              {formatMoney(listPrice, currency)}
             </span>
           )}
         </div>
@@ -300,6 +369,7 @@ function Cart({
   ref,
   lines,
   total,
+  currency,
   busy,
   scriptReady,
   error,
@@ -309,6 +379,7 @@ function Cart({
   ref: React.Ref<HTMLElement>
   lines: StorefrontProduct[]
   total: number
+  currency: Currency
   busy: boolean
   scriptReady: boolean
   error: string | null
@@ -339,7 +410,7 @@ function Cart({
                   </p>
                 </div>
                 <span className="shrink-0 text-sm font-semibold whitespace-nowrap text-ink">
-                  {formatCad(line.priceCents)}
+                  {formatMoney(priceFor(line, currency), currency)}
                 </span>
                 <button
                   type="button"
@@ -356,7 +427,9 @@ function Cart({
 
           <div className="mt-6 flex items-baseline justify-between border-t border-rule pt-5">
             <span className="font-semibold text-ink">Total</span>
-            <span className="font-display text-2xl font-bold text-rouge">{formatCad(total)}</span>
+            <span className="font-display text-2xl font-bold text-rouge">
+              {formatMoney(total, currency)}
+            </span>
           </div>
           <p className="mt-1.5 text-xs text-ink-soft">
             All taxes and charges included. Nothing is added at the payment step.
@@ -412,11 +485,11 @@ function Cart({
               disabled={busy || !scriptReady}
               className="w-full rounded-lg bg-ink px-5 py-3.5 font-semibold text-white transition-colors duration-200 hover:bg-ink-deep disabled:opacity-50"
             >
-              {busy ? 'Opening payment…' : `Pay ${formatCad(total)}`}
+              {busy ? 'Opening payment…' : `Pay ${formatMoney(total, currency)}`}
             </button>
             <p className="flex items-center justify-center gap-1.5 text-xs text-ink-soft">
               <IconLock className="size-3.5" />
-              Secure payment by Razorpay · in Canadian dollars
+              Secure payment by Razorpay · in {currency === 'CAD' ? 'Canadian dollars' : 'Indian rupees'}
             </p>
           </form>
         </>
@@ -481,10 +554,12 @@ function Field({
 function MobileBar({
   count,
   total,
+  currency,
   onReview,
 }: {
   count: number
   total: number
+  currency: Currency
   onReview: () => void
 }) {
   return (
@@ -494,7 +569,9 @@ function MobileBar({
           <p className="text-xs text-ink-soft">
             {count} item{count === 1 ? '' : 's'}
           </p>
-          <p className="font-display text-lg font-bold text-rouge">{formatCad(total)}</p>
+          <p className="font-display text-lg font-bold text-rouge">
+            {formatMoney(total, currency)}
+          </p>
         </div>
         <button
           type="button"

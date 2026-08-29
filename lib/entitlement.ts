@@ -62,6 +62,8 @@ export async function libraryFor(userId: string): Promise<Product[]> {
       kind: products.kind,
       priceCents: products.priceCents,
       listPriceCents: products.listPriceCents,
+      priceInrPaise: products.priceInrPaise,
+      listPriceInrPaise: products.listPriceInrPaise,
       pageCount: products.pageCount,
       isActive: products.isActive,
       createdAt: products.createdAt,

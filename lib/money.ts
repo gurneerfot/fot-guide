@@ -1,13 +1,13 @@
-/**
- * Money. Everything is CAD, stored as integer cents.
- *
- * Floats are not allowed near a price: 0.1 + 0.2 is 0.30000000000000004, and
- * that eventually charges someone CA$28.000000001. Razorpay's API speaks minor
- * units anyway, so cents is both the safe representation and the wire format.
- */
+/** Money is always stored and sent as integer minor units: CAD cents or INR paise. */
+export const CURRENCIES = ['CAD', 'INR'] as const
+export type Currency = (typeof CURRENCIES)[number]
 
-/** Razorpay is told this explicitly on every order — never left to default. */
-export const CURRENCY = 'CAD'
+export type DualPrice = {
+  priceCents: number
+  priceInrPaise: number
+  listPriceCents?: number | null
+  listPriceInrPaise?: number | null
+}
 
 /**
  * Prices are all-in: the number on the card is exactly what Razorpay charges.
@@ -22,11 +22,31 @@ export const CURRENCY = 'CAD'
  * sale is actually worth, and it is an estimate — Razorpay's own dashboard is
  * the authority on what was deducted.
  */
-export const ESTIMATED_COST_BPS = 554
+const ESTIMATED_COST_BPS: Record<Currency, number> = {
+  CAD: 554,
+  // 2% domestic gateway fee plus 18% GST on that fee.
+  INR: 236,
+}
 
-/** Cents to a display string: 2800 -> "CA$28.00". */
-export function formatCad(cents: number): string {
-  return `CA$${(cents / 100).toLocaleString('en-CA', {
+export function priceFor(product: DualPrice, currency: Currency): number {
+  return currency === 'CAD' ? product.priceCents : product.priceInrPaise
+}
+
+export function listPriceFor(product: DualPrice, currency: Currency): number | null {
+  return currency === 'CAD'
+    ? (product.listPriceCents ?? null)
+    : (product.listPriceInrPaise ?? null)
+}
+
+/** Minor units to a display string: CAD 2800 -> CA$28.00; INR 189900 -> ₹1,899. */
+export function formatMoney(minor: number, currency: Currency): string {
+  if (currency === 'INR') {
+    return `₹${(minor / 100).toLocaleString('en-IN', {
+      minimumFractionDigits: minor % 100 === 0 ? 0 : 2,
+      maximumFractionDigits: 2,
+    })}`
+  }
+  return `CA$${(minor / 100).toLocaleString('en-CA', {
     minimumFractionDigits: 2,
     maximumFractionDigits: 2,
   })}`
@@ -38,6 +58,6 @@ export function formatCad(cents: number): string {
  * Rounded down, so the figure is never optimistic — a seller reading this
  * should be pleasantly surprised, not short.
  */
-export function estimatedNetCents(chargedCents: number): number {
-  return Math.floor(chargedCents * (1 - ESTIMATED_COST_BPS / 10_000))
+export function estimatedNetMinor(chargedMinor: number, currency: Currency): number {
+  return Math.floor(chargedMinor * (1 - ESTIMATED_COST_BPS[currency] / 10_000))
 }

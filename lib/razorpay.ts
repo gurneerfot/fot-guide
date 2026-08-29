@@ -1,5 +1,5 @@
 import { createHmac, timingSafeEqual } from 'node:crypto'
-import { CURRENCY } from '@/lib/money'
+import type { Currency } from '@/lib/money'
 
 /**
  * No SDK. Order creation is one authenticated POST and signature verification
@@ -35,7 +35,8 @@ export type RazorpayOrder = {
  * right failure — a silent fallback would charge ₹25 for a CA$25 product.
  */
 export async function createOrder(input: {
-  amountCents: number
+  amountMinor: number
+  currency: Currency
   receipt: string
   notes?: Record<string, string>
 }): Promise<RazorpayOrder> {
@@ -49,9 +50,9 @@ export async function createOrder(input: {
       'content-type': 'application/json',
     },
     body: JSON.stringify({
-      // Minor units, as everywhere else in Razorpay's API — cents for CAD.
-      amount: input.amountCents,
-      currency: CURRENCY,
+      // Minor units, as everywhere else in Razorpay's API — cents or paise.
+      amount: input.amountMinor,
+      currency: input.currency,
       receipt: input.receipt,
       notes: input.notes ?? {},
     }),
