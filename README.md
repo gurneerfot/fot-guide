@@ -3,7 +3,7 @@
 A standalone storefront for three things: a study guide you read here, TEF mock
 tests, and a ten-lesson plan. Someone puts what they want in a cart, pays once
 with Razorpay, and is looked after according to what was in it — an access code
-by email for the guide, which they sign in with and read page by page in the
+by email for the guide, which gives them 45 days to read it page by page in the
 browser with nothing downloadable; a confirmation and a call from a person for
 the rest. A single order can hold both.
 
@@ -97,22 +97,23 @@ needed at ingest time, never at runtime.
 
 ```bash
 pnpm ingest --pdf ./material.pdf \
-            --slug tef-guide \
-            --title "TEF Canada — Complete Study Guide" \
-            --price 25 \
-            --summary "A1 to B2 grammar, vocabulary and exam strategy."
+            --slug guide-expression-orale-b \
+            --title "Guide — Expression Orale, Section B" \
+            --price 28 \
+            --summary "Common TEF Canada arguments with suitable responses."
 ```
 
 `--price` is in Canadian dollars, all-in.
 
 Each page is rendered at 150dpi, resized to 1400px wide and stored as JPEG in
-`content/pages/<slug>/`. That directory is **gitignored** — it is paid content
-and must never reach a public repo. The DB stores only the relative path.
+`content/pages/<slug>/`. The rendered pages are committed so Vercel can bundle
+them, which means this repository must remain private. The DB stores only the
+relative path.
 
 The product is created **inactive**. Look at the pages, then publish:
 
 ```bash
-pnpm grant --publish tef-guide
+pnpm grant --publish guide-expression-orale-b
 ```
 
 Re-running `pnpm ingest` with the same slug replaces every page and updates the
