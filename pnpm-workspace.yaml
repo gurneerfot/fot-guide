@@ -1,0 +1,7 @@
+# pnpm reads build-script approval from here, not package.json.
+# sharp ships prebuilt binaries for linux-x64, so it needs no build step —
+# allowing one would force a source build against libvips headers we don't have.
+allowBuilds:
+  esbuild: true
+  sharp: false
+  unrs-resolver: false

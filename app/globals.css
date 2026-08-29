@@ -1,0 +1,87 @@
+@import 'tailwindcss';
+
+/*
+  Français on Tips — study material.
+
+  Navy, red, white. Red is an accent and an alarm, never decoration; navy
+  carries every action. The token names are semantic on purpose — repointing a
+  value here restyles the whole app without touching a component.
+*/
+
+@theme {
+  --color-ink: #10244a; /* primary navy — headings, body, actions */
+  --color-ink-deep: #0b1b36; /* deeper navy — filled buttons, hover */
+  --color-ink-soft: #53627d; /* secondary and supporting text */
+  --color-rouge: #d71920; /* accent and alarm */
+  --color-rouge-wash: #fff0f1; /* badge and error surfaces */
+  --color-paper: #f7f9fc; /* page background */
+  --color-card: #ffffff; /* surfaces sitting on paper */
+  --color-rule: #e2e7ef; /* hairlines, dividers, card borders */
+
+  /* Kept for the handful of places that want a navy tint rather than a line. */
+  --color-ink-wash: color-mix(in srgb, #10244a 4%, #ffffff);
+
+  /*
+    Cards are defined by a hairline first and a shadow second — the shadow is
+    there to lift them off the page, not to draw attention to itself.
+  */
+  --shadow-card: 0 1px 2px rgba(16, 36, 74, 0.04), 0 10px 30px -18px rgba(16, 36, 74, 0.18);
+  --shadow-card-hover: 0 1px 2px rgba(16, 36, 74, 0.05), 0 18px 40px -20px rgba(16, 36, 74, 0.26);
+
+  --radius-card: 0.875rem;
+
+  --font-display: var(--font-display-face), ui-sans-serif, system-ui, sans-serif;
+  --font-sans: var(--font-manrope), ui-sans-serif, system-ui, sans-serif;
+  --font-mono: var(--font-geist-mono), ui-monospace, 'SF Mono', monospace;
+
+  --text-read: 1.0625rem; /* 17 — never smaller for content */
+  --text-read--line-height: 1.65;
+}
+
+html {
+  background: var(--color-paper);
+  color: var(--color-ink);
+  font-family: var(--font-sans);
+  -webkit-text-size-adjust: 100%;
+}
+
+/* One visible focus treatment everywhere, so keyboard users are never lost. */
+:where(a, button, input, select, textarea):focus-visible {
+  outline: 2px solid var(--color-ink);
+  outline-offset: 2px;
+  border-radius: 4px;
+}
+
+/*
+  Reader hardening.
+
+  None of this stops a determined copy — the OS screenshot tool and a phone
+  camera are both out of reach of any web page. It removes the casual routes
+  (drag the image to the desktop, long-press to save, Ctrl+P to PDF) so that
+  copying takes deliberate effort, and the burnt-in watermark handles the rest.
+*/
+.reader-page img {
+  -webkit-user-select: none;
+  user-select: none;
+  -webkit-user-drag: none;
+  -webkit-touch-callout: none;
+  pointer-events: none;
+}
+
+@media print {
+  .reader-shell {
+    display: none !important;
+  }
+  .reader-print-notice {
+    display: block !important;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01ms !important;
+    transition-duration: 0.01ms !important;
+  }
+}

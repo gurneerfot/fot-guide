@@ -1,0 +1,27 @@
+{
+  "version": "7",
+  "dialect": "postgresql",
+  "entries": [
+    {
+      "idx": 0,
+      "version": "7",
+      "when": 1787875613184,
+      "tag": "0000_pale_darkhawk",
+      "breakpoints": true
+    },
+    {
+      "idx": 1,
+      "version": "7",
+      "when": 1787961721041,
+      "tag": "0001_cad_pricing_and_service_products",
+      "breakpoints": true
+    },
+    {
+      "idx": 2,
+      "version": "7",
+      "when": 1787964321155,
+      "tag": "0002_cart_orders_and_all_in_prices",
+      "breakpoints": true
+    }
+  ]
+}
