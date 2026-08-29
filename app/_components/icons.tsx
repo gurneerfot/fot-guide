@@ -67,6 +67,16 @@ export function IconMenu({ className }: IconProps) {
   )
 }
 
+/** The header's "Book a Free Demo Class" call to action. */
+export function IconCalendar({ className }: IconProps) {
+  return (
+    <svg {...base} className={className}>
+      <rect x="3" y="5" width="18" height="16" rx="2" />
+      <path d="M3 10h18M8 3v4M16 3v4" />
+    </svg>
+  )
+}
+
 /** The empty order panel. */
 export function IconBag({ className }: IconProps) {
   return (
