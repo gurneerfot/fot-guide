@@ -10,6 +10,12 @@ next-env.d.ts
 .DS_Store
 .vercel
 
-# Paid content. Page images must never reach a public repo.
-content/pages/
+# Source PDFs stay out — they are the un-watermarked originals, and nothing at
+# runtime reads them.
 content/source/
+
+# Rendered page images ARE committed. `next.config.ts` traces them into the
+# function bundle, and Vercel builds from this repo, so a gitignored image is an
+# image the deployed reader cannot serve. Safe only while this repo is PRIVATE —
+# if it is ever made public, this line must come back first.
+# content/pages/
