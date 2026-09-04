@@ -50,6 +50,13 @@
       "when": 1788021186656,
       "tag": "0006_set-inr-price-1899",
       "breakpoints": true
+    },
+    {
+      "idx": 7,
+      "version": "7",
+      "when": 1788497819196,
+      "tag": "0007_set-lessons-price-250",
+      "breakpoints": true
     }
   ]
 }

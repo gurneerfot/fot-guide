@@ -136,7 +136,8 @@ Created inactive, same as a book. Publish with `pnpm grant --publish <slug>`.
 Re-running with the same slug updates the title, both prices and summary.
 
 Three already exist: `mock-reading`, `mock-listening` (CA$28 each) and
-`lessons-10` (CA$280). Adding the two remaining TEF modules is one command each.
+`lessons-10` (CA$250 — ten lessons at CA$25 each). Adding the two remaining TEF
+modules is one command each.
 
 When one of these sells, the buyer's confirmation email carries a WhatsApp
 link — `wa.me` with the purchase already written into the message — and the same
