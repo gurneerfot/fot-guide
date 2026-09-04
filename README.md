@@ -133,11 +133,31 @@ pnpm grant --add-service mock-writing \
 ```
 
 Created inactive, same as a book. Publish with `pnpm grant --publish <slug>`.
-Re-running with the same slug updates the title, both prices and summary.
+Re-running with the same slug updates the title, both prices and summary; a flag
+left off leaves that field as it was.
 
-Three already exist: `mock-reading`, `mock-listening` (CA$28 each) and
-`lessons-10` (CA$250 — ten lessons at CA$25 each). Adding the two remaining TEF
-modules is one command each.
+Six already exist: the four TEF mock modules `mock-reading`, `mock-listening`,
+`mock-writing`, `mock-speaking` (CA$28 each), `mocks-all-four` (CA$110), and
+`lessons-10` (CA$250 — ten lessons at CA$25 each).
+
+### Selling several together
+
+A bundle is an ordinary service product with its own price — there is no
+multi-item discount rule, because a rule that fires on the contents of a cart is
+one more thing to get wrong for money. `--list-price` sets the figure struck
+through beside it, so the saving is visible on the card rather than asserted in
+the summary:
+
+```bash
+pnpm grant --add-service mocks-all-four \
+           --title "TEF Canada Mocks — All Four Modules" \
+           --price 110 --price-inr 7499 \
+           --list-price 112 --list-price-inr 7596 \
+           --summary "All four mocks together, each marked and returned."
+```
+
+Nothing stops a buyer adding the bundle *and* a single mock; both lines simply
+appear in the order. Keep the bundle's title saying what it contains.
 
 When one of these sells, the buyer's confirmation email carries a WhatsApp
 link — `wa.me` with the purchase already written into the message — and the same
@@ -159,7 +179,8 @@ pnpm grant --publish <slug>
 pnpm grant --unpublish <slug>
 pnpm grant --give <email> --product <slug> --name "Full Name"
 pnpm grant --reissue <email>       # lost code, or cutting off a shared one
-pnpm grant --add-service <slug> --title "…" --price <CAD> --price-inr <INR> [--summary "…"]
+pnpm grant --add-service <slug> --title "…" --price <CAD> --price-inr <INR> [--summary "…"] \
+                                [--list-price <CAD> --list-price-inr <INR>]   # struck-through "was" price
 ```
 
 `--give` works only on `reader` products. Granting an entitlement to a service

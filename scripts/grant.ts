@@ -58,19 +58,31 @@ async function listProducts() {
 }
 
 /**
- * Creates a product nobody reads here — a mock test module or a lesson plan.
+ * Named arguments, not positional: this call carries up to four amounts of
+ * money in a row, and two of them transposed silently reprices a product.
+ */
+type ServiceInput = {
+  slug: string
+  title: string
+  summary: string
+  priceCad: number
+  priceInr: number
+  /** What the parts cost bought separately. Struck through beside the price. */
+  listPriceCad?: number
+  listPriceInr?: number
+}
+
+/**
+ * Creates a product nobody reads here — a mock test module, a lesson plan, or
+ * several of them sold together.
  *
  * `pnpm ingest` cannot make these because it exists to turn a PDF into pages,
  * and these have none. Re-running with the same slug updates the price and
  * title, matching how ingest behaves.
  */
-async function addService(
-  slug: string,
-  title: string,
-  priceCad: number,
-  priceInr: number,
-  summary: string,
-) {
+async function addService(input: ServiceInput) {
+  const { slug, title, summary, priceCad, priceInr } = input
+
   if (!/^[a-z0-9][a-z0-9-]*$/.test(slug)) {
     return console.error('--slug must be lowercase letters, digits and dashes')
   }
@@ -83,6 +95,22 @@ async function addService(
   const priceCents = Math.round(priceCad * 100)
   const priceInrPaise = Math.round(priceInr * 100)
 
+  // The storefront strikes a list price out only while it is above the price,
+  // so a lower one would simply not render — which reads as the flag being
+  // ignored. Refuse it here instead, where there is somewhere to say why.
+  const listPriceCents =
+    input.listPriceCad === undefined ? undefined : Math.round(input.listPriceCad * 100)
+  const listPriceInrPaise =
+    input.listPriceInr === undefined ? undefined : Math.round(input.listPriceInr * 100)
+  if (listPriceCents !== undefined && !(listPriceCents > priceCents)) {
+    return console.error('--list-price must be above --price — it is the crossed-out "was" figure.')
+  }
+  if (listPriceInrPaise !== undefined && !(listPriceInrPaise > priceInrPaise)) {
+    return console.error(
+      '--list-price-inr must be above --price-inr — it is the crossed-out "was" figure.',
+    )
+  }
+
   const [existing] = await db.select().from(products).where(eq(products.slug, slug)).limit(1)
   if (existing && existing.kind !== 'service') {
     // Flipping a reader product to a service would strand its pages and revoke
@@ -92,9 +120,19 @@ async function addService(
   }
 
   if (existing) {
+    // An omitted flag leaves that field alone, as `--summary` already does.
+    // Blanking a list price on every re-run would quietly delete the saving a
+    // bundle advertises the first time someone corrects a typo in its title.
     await db
       .update(products)
-      .set({ title, priceCents, priceInrPaise, ...(summary ? { summary } : {}) })
+      .set({
+        title,
+        priceCents,
+        priceInrPaise,
+        ...(summary ? { summary } : {}),
+        ...(listPriceCents === undefined ? {} : { listPriceCents }),
+        ...(listPriceInrPaise === undefined ? {} : { listPriceInrPaise }),
+      })
       .where(eq(products.id, existing.id))
     console.log(
       `Updated ${slug} — ${formatMoney(priceCents, 'CAD')} / ${formatMoney(priceInrPaise, 'INR')}.`,
@@ -109,6 +147,8 @@ async function addService(
     kind: 'service',
     priceCents,
     priceInrPaise,
+    listPriceCents,
+    listPriceInrPaise,
     // Deliberately off, exactly as ingest leaves a book: read the copy on the
     // storefront before it can take money.
     isActive: false,
@@ -311,7 +351,17 @@ async function main() {
         '--add-service also needs --title "…", --price <CAD>, and --price-inr <INR>',
       )
     }
-    await addService(addServiceSlug, title, Number(price), Number(priceInr), arg('summary') ?? '')
+    const listPrice = arg('list-price')
+    const listPriceInr = arg('list-price-inr')
+    await addService({
+      slug: addServiceSlug,
+      title,
+      summary: arg('summary') ?? '',
+      priceCad: Number(price),
+      priceInr: Number(priceInr),
+      listPriceCad: listPrice === undefined ? undefined : Number(listPrice),
+      listPriceInr: listPriceInr === undefined ? undefined : Number(listPriceInr),
+    })
   } else if (reissueTo) await reissue(reissueTo)
   else {
     console.log(
@@ -324,7 +374,8 @@ async function main() {
         '  pnpm grant --give <email> --product <slug> [--name "Full Name"]',
         '  pnpm grant --trial <email> --product <slug> [--name "Full Name"]',
         '  pnpm grant --reissue <email>',
-        '  pnpm grant --add-service <slug> --title "…" --price <CAD> --price-inr <INR> [--summary "…"]',
+        '  pnpm grant --add-service <slug> --title "…" --price <CAD> --price-inr <INR>',
+        '                              [--summary "…"] [--list-price <CAD> --list-price-inr <INR>]',
       ].join('\n'),
     )
   }
