@@ -14,7 +14,10 @@
     "db:studio": "drizzle-kit studio",
     "ingest": "tsx --env-file=.env.local scripts/ingest-pdf.ts",
     "grant": "tsx --env-file=.env.local scripts/grant.ts",
-    "check": "tsx --env-file=.env.local scripts/check-flow.ts"
+    "check": "tsx --env-file=.env.local scripts/check-flow.ts",
+    "check:demo": "tsx --env-file=.env.local scripts/check-demo.ts",
+    "admin:password": "tsx scripts/admin-password.ts",
+    "google:auth": "tsx --env-file=.env.local scripts/google-auth.ts"
   },
   "dependencies": {
     "@neondatabase/serverless": "^1.1.0",

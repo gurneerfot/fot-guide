@@ -57,6 +57,13 @@
       "when": 1788497819196,
       "tag": "0007_set-lessons-price-250",
       "breakpoints": true
+    },
+    {
+      "idx": 8,
+      "version": "7",
+      "when": 1790566587533,
+      "tag": "0008_demo_booking",
+      "breakpoints": true
     }
   ]
 }

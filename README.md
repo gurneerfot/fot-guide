@@ -239,13 +239,73 @@ So this is built for **attribution and deterrence**, not prevention:
 - **Sharing signals.** `page_views` records who read which page from which IP,
   so a code being read from six cities in an hour is visible after the fact.
 
+## Demo class booking
+
+`/demo` lists free 30-minute demo classes in the visitor's own time zone. Each
+slot has two seats; both bookers join the same Google Meet. The owner adds and
+removes slots and sees who booked at `/admin`.
+
+It shares nothing with the shop but the database: two tables of its own
+(`demo_slots`, `demo_bookings`), its own login (`fot_study_admin` cookie,
+`ADMIN_*` variables), and no link to `users`, sessions or entitlements.
+Nothing in it can reach a buyer's access.
+
+- **Times** are stored as instants and formatted in the viewer's browser (the
+  server runs in UTC). Emails use the booker's zone, recorded at booking, and
+  `ADMIN_TIME_ZONE` for the owner. Both carry an `.ics` invite.
+- **Overbooking** is impossible, not just unlikely: booking locks the slot row,
+  and `(slot_id, seat)` is unique with `seat` limited to 1–2.
+- **One upcoming demo per email**, five bookings per IP a day, and optional
+  Turnstile.
+- **The Meet link is made when the owner adds a slot**, not at booking, so a
+  Google failure shows up to the owner at the moment they can retry, never to a
+  visitor.
+
+### Switching it on
+
+1. **Back up first.** Neon → Branches → create a branch of production.
+2. Apply the migration, and only it:
+
+   ```bash
+   pnpm db:migrate        # applies 0008_demo_booking: CREATE TABLE ×2, nothing else
+   ```
+
+   Production's history already holds 0000–0007 with matching hashes, so this
+   runs the new file alone. Never `db:push` against production.
+3. `pnpm admin:password`, `openssl rand -base64 48` → set `ADMIN_PASSWORD_HASH`,
+   `ADMIN_SESSION_SECRET`, `ADMIN_EMAIL`, `ADMIN_TIME_ZONE` in Vercel.
+4. Google (optional, see below) or paste a Meet link per slot.
+5. Deploy, sign in at `/admin`, add a slot, book it yourself at `/demo`.
+6. Set `NEXT_PUBLIC_DEMO_BOOKING=on` and redeploy to move the header button
+   off Calendly.
+
+### Google Meet links on a personal account
+
+1. console.cloud.google.com → new project → enable **Google Calendar API**.
+2. OAuth consent screen → External → add the `calendar.events` scope → then
+   **Publish app** ("In production"). Left in Testing, the refresh token dies
+   after 7 days. Google will show an "unverified app" warning when you sign in;
+   that is expected, since only the owner ever signs in.
+3. Credentials → OAuth client ID → **Desktop app**. Put the id and secret in
+   `.env.local`.
+4. `pnpm google:auth`, sign in as the account that will host the calls, copy
+   `GOOGLE_REFRESH_TOKEN` into Vercel.
+
+Bookers are not added as guests, so Meet shows them a waiting screen and the
+host admits them — the host must be signed in as that account. If slot creation
+ever says Google sign-in expired, run `pnpm google:auth` again.
+
 ## Verifying
 
 ```bash
 pnpm check       # purchase -> access flow, against DATABASE_URL
 ```
 
-**This deletes every row in the target database.** Point it at a scratch one.
+**This deletes every row in the target database**, so it refuses to run unless
+`DATABASE_URL` is local — `.env.local` points at production. Use
+`DATABASE_URL=postgresql://postgres:dev@localhost:55432/fot_study_dev pnpm check`.
+`pnpm check:demo` covers demo booking the same way (five people racing for two
+seats, the seat constraint, time zones) and touches only the demo tables.
 It covers the cases that quietly cost money: an unpaid order being provisioned,
 a retried webhook issuing a second code, three concurrent settlements racing, a
 repeat buyer getting a duplicate account, a reused Razorpay payment id, a

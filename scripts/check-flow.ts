@@ -23,6 +23,10 @@ import { codeIndex, verifyCode } from '../lib/auth/code'
 import { markPaid, provisionPayment } from '../lib/provision'
 import { hasAccess } from '../lib/entitlement'
 import { priceFor, type Currency, type DualPrice } from '../lib/money'
+import { assertLocalDatabase } from './local-only'
+
+// Before anything touches the database: `.env.local` points at production.
+assertLocalDatabase()
 
 let failures = 0
 function check(label: string, condition: boolean, detail = '') {

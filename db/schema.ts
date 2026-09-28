@@ -319,6 +319,74 @@ export const loginAttempts = pgTable(
   (t) => [index('login_attempts_ip_time_idx').on(t.ip, t.attemptedAt)],
 )
 
+/* ----------------------------------------------------------- demo_slots -- */
+
+/**
+ * A 30-minute free demo class the owner has opened for booking.
+ *
+ * Deliberately unconnected to anything above: a demo booker is not a buyer,
+ * gets no account and no code, and nothing here can reach a reader's access.
+ *
+ * `starts_at` is an instant (UTC underneath). Every wall-clock rendering —
+ * India for the owner, Europe or anywhere for the booker — happens at the
+ * edge, from the viewer's own time zone.
+ */
+export const demoSlots = pgTable(
+  'demo_slots',
+  {
+    id: uuid('id').primaryKey().defaultRandom(),
+    startsAt: timestamp('starts_at', { withTimezone: true }).notNull(),
+    /** One call per slot, shared by both seats. Made when the slot is created. */
+    meetUrl: text('meet_url').notNull(),
+    /** Null when the link was pasted in by hand rather than made via Google Calendar. */
+    googleEventId: text('google_event_id'),
+    createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+  },
+  (t) => [uniqueIndex('demo_slots_starts_at_uq').on(t.startsAt)],
+)
+
+/* -------------------------------------------------------- demo_bookings -- */
+
+/**
+ * One seat taken in a demo slot. A slot holds two.
+ *
+ * The seat number is what makes overbooking impossible rather than merely
+ * unlikely: `(slot_id, seat)` is unique and `seat` can only be 1 or 2, so a
+ * third row for the same slot cannot exist no matter how the requests race.
+ * The booking transaction locks the slot first, so in practice the constraint
+ * is never the thing that says no — it is there for when that code is wrong.
+ *
+ * `restrict` on the slot, so a slot with someone booked into it cannot be
+ * deleted out from under them.
+ */
+export const demoBookings = pgTable(
+  'demo_bookings',
+  {
+    id: uuid('id').primaryKey().defaultRandom(),
+    slotId: uuid('slot_id')
+      .notNull()
+      .references(() => demoSlots.id, { onDelete: 'restrict' }),
+    seat: integer('seat').notNull(),
+    name: text('name').notNull(),
+    email: text('email').notNull(),
+    phone: text('phone').notNull(),
+    /** In the booker's words: where their French is today. */
+    levelNote: text('level_note').notNull(),
+    /** IANA zone the booker saw the slot in, so their email says the same time. */
+    timeZone: text('time_zone').notNull(),
+    /** Throttling only — how many bookings one address makes in a day. */
+    ip: text('ip'),
+    createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+  },
+  (t) => [
+    uniqueIndex('demo_bookings_slot_seat_uq').on(t.slotId, t.seat),
+    // One person cannot take both seats of the same call.
+    uniqueIndex('demo_bookings_slot_email_uq').on(t.slotId, sql`lower(${t.email})`),
+    index('demo_bookings_ip_time_idx').on(t.ip, t.createdAt),
+    check('demo_bookings_seat_range', sql`${t.seat} between 1 and 2`),
+  ],
+)
+
 /* ----------------------------------------------------------- relations -- */
 
 export const usersRelations = relations(users, ({ many }) => ({
@@ -355,4 +423,12 @@ export const entitlementsRelations = relations(entitlements, ({ one }) => ({
   user: one(users, { fields: [entitlements.userId], references: [users.id] }),
   product: one(products, { fields: [entitlements.productId], references: [products.id] }),
   payment: one(payments, { fields: [entitlements.paymentId], references: [payments.id] }),
+}))
+
+export const demoSlotsRelations = relations(demoSlots, ({ many }) => ({
+  bookings: many(demoBookings),
+}))
+
+export const demoBookingsRelations = relations(demoBookings, ({ one }) => ({
+  slot: one(demoSlots, { fields: [demoBookings.slotId], references: [demoSlots.id] }),
 }))

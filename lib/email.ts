@@ -13,10 +13,12 @@ const API = 'https://api.resend.com/emails'
 
 type SendResult = { sent: boolean; reason?: string }
 
-async function send(input: {
+export async function send(input: {
   to: string
   subject: string
   html: string
+  /** Base64 content. Omitted from the request entirely when absent. */
+  attachments?: { filename: string; content: string }[]
 }): Promise<SendResult> {
   const key = process.env.RESEND_API_KEY
   const from = process.env.EMAIL_FROM
@@ -31,7 +33,13 @@ async function send(input: {
     const response = await fetch(API, {
       method: 'POST',
       headers: { authorization: `Bearer ${key}`, 'content-type': 'application/json' },
-      body: JSON.stringify({ from, to: input.to, subject: input.subject, html: input.html }),
+      body: JSON.stringify({
+        from,
+        to: input.to,
+        subject: input.subject,
+        html: input.html,
+        attachments: input.attachments,
+      }),
     })
     if (!response.ok) {
       console.error('[email] send failed', response.status, await response.text())
@@ -44,7 +52,7 @@ async function send(input: {
   }
 }
 
-function escapeHtml(value: string): string {
+export function escapeHtml(value: string): string {
   return value
     .replace(/&/g, '&amp;')
     .replace(/</g, '&lt;')
@@ -52,7 +60,7 @@ function escapeHtml(value: string): string {
     .replace(/"/g, '&quot;')
 }
 
-function shell(body: string): string {
+export function shell(body: string): string {
   return `<div style="font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Helvetica,Arial,sans-serif;
               background:#F8F5F0;padding:32px 16px;color:#16243F;">
   <div style="max-width:520px;margin:0 auto;background:#fff;border:1px solid #E2DCD2;border-radius:4px;padding:32px;">
