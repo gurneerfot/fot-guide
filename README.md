@@ -288,7 +288,7 @@ Nothing in it can reach a buyer's access.
    that is expected, since only the owner ever signs in.
 3. Credentials → OAuth client ID → **Desktop app**. Put the id and secret in
    `.env.local`.
-4. `pnpm google:auth`, sign in as the account that will host the calls, copy
+4. `pnpm google:auth`, sign in as **francaisontips@gmail.com** (the account that hosts the calls), copy
    `GOOGLE_REFRESH_TOKEN` into Vercel.
 
 Bookers are not added as guests, so Meet shows them a waiting screen and the

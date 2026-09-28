@@ -82,6 +82,8 @@ export function sendDemoBookedToBooker(b: Booking) {
     subject: `Your demo class — ${when}`,
     html: shell(body),
     attachments: [calendarInvite(b)],
+    // "Can't make it? Reply" has to reach the owner, not the sending address.
+    replyTo: process.env.ADMIN_EMAIL || undefined,
   })
 }
 
@@ -112,6 +114,8 @@ export function sendDemoBookedToAdmin(b: Booking) {
     to,
     subject: `Demo booked: ${b.name} — ${when}`,
     html: shell(body),
+    // Replying to the notice writes to the booker.
+    replyTo: b.email,
     attachments: [calendarInvite(b)],
   })
 }

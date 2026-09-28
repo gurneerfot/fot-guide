@@ -19,6 +19,8 @@ export async function send(input: {
   html: string
   /** Base64 content. Omitted from the request entirely when absent. */
   attachments?: { filename: string; content: string }[]
+  /** Where a reply goes, when that is not the sending address. */
+  replyTo?: string
 }): Promise<SendResult> {
   const key = process.env.RESEND_API_KEY
   const from = process.env.EMAIL_FROM
@@ -39,6 +41,7 @@ export async function send(input: {
         subject: input.subject,
         html: input.html,
         attachments: input.attachments,
+        reply_to: input.replyTo,
       }),
     })
     if (!response.ok) {
