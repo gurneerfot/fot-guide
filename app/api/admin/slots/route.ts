@@ -2,12 +2,19 @@ import { NextResponse } from 'next/server'
 import { z } from 'zod'
 import { isAdmin } from '@/lib/demo/admin-auth'
 import { createSlot, deleteSlot } from '@/lib/demo/slots'
+import { DEFAULT_SEATS, MAX_SEATS } from '@/lib/demo/time'
 
 export const runtime = 'nodejs'
 
 const create = z.object({
   /** An instant, converted from the owner's local time in their browser. */
   startsAt: z.iso.datetime({ offset: true, error: 'Pick a date and time.' }),
+  capacity: z
+    .number({ error: 'Choose how many seats.' })
+    .int('Seats must be a whole number.')
+    .min(1, 'At least one seat.')
+    .max(MAX_SEATS, `At most ${MAX_SEATS} seats.`)
+    .default(DEFAULT_SEATS),
   meetUrl: z
     .url({ protocol: /^https$/, error: 'The link must start with https://' })
     .max(300)
@@ -37,7 +44,11 @@ export async function POST(request: Request) {
   }
 
   try {
-    const result = await createSlot({ startsAt, meetUrl: parsed.data.meetUrl || undefined })
+    const result = await createSlot({
+      startsAt,
+      capacity: parsed.data.capacity,
+      meetUrl: parsed.data.meetUrl || undefined,
+    })
     switch (result.status) {
       case 'created':
         return NextResponse.json({ ok: true, id: result.id })

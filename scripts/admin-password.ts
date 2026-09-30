@@ -32,15 +32,23 @@ function ask(question: string): Promise<string> {
   })
 }
 
-const password = await ask('Admin password (hidden): ')
-if (password.length < 12) {
-  console.error('Use at least 12 characters.')
-  process.exit(1)
-}
-if ((await ask('Again: ')) !== password) {
-  console.error('The two did not match.')
-  process.exit(1)
+// Wrapped: tsx runs these scripts as CommonJS, which has no top-level await.
+async function main() {
+  const password = await ask('Admin password (hidden): ')
+  if (password.length < 12) {
+    console.error('Use at least 12 characters.')
+    process.exit(1)
+  }
+  if ((await ask('Again: ')) !== password) {
+    console.error('The two did not match.')
+    process.exit(1)
+  }
+
+  const encoded = Buffer.from(await hash(password, ARGON)).toString('base64')
+  console.log(`\nADMIN_PASSWORD_HASH=${encoded}\n`)
 }
 
-const encoded = Buffer.from(await hash(password, ARGON)).toString('base64')
-console.log(`\nADMIN_PASSWORD_HASH=${encoded}\n`)
+main().catch((error) => {
+  console.error(error)
+  process.exit(1)
+})

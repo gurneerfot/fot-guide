@@ -104,6 +104,7 @@ export async function POST(request: Request) {
     levelNote: input.levelNote,
     timeZone,
     seat: result.seat,
+    capacity: result.capacity,
     startsAt: result.startsAt,
     meetUrl: result.meetUrl,
   }

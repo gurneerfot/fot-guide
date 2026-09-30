@@ -16,6 +16,7 @@ type Booking = {
   levelNote: string
   timeZone: string
   seat: number
+  capacity: number
   startsAt: Date
   meetUrl: string
 }
@@ -73,7 +74,7 @@ export function sendDemoBookedToBooker(b: Booking) {
     ${button(b.meetUrl, 'Join on Google Meet')}
     <p style="font-size:14px;line-height:1.6;color:#5A6980;margin:24px 0 0;">
       Link: ${escapeHtml(b.meetUrl)}<br>
-      The class is 30 minutes and you may share it with one other learner.
+      The class is 30 minutes${b.capacity > 1 ? ' and you may share it with other learners' : ''}.
       If you are let in from a waiting screen, that is normal — we admit you
       when the class starts. Can&rsquo;t make it? Just reply to this email.
     </p>`
@@ -101,7 +102,7 @@ export function sendDemoBookedToAdmin(b: Booking) {
   const body = `
     <h1 style="font-size:22px;margin:0 0 16px;">New demo booking</h1>
     <p style="font-size:18px;line-height:1.5;font-weight:600;margin:0 0 6px;">${escapeHtml(when)}</p>
-    <p style="font-size:14px;color:#5A6980;margin:0 0 20px;">Seat ${b.seat} of 2</p>
+    <p style="font-size:14px;color:#5A6980;margin:0 0 20px;">Seat ${b.seat} of ${b.capacity}</p>
     <table style="font-size:15px;line-height:1.5;border-collapse:collapse;margin:0 0 24px;">
       ${row('Name', b.name)}
       ${row('Email', b.email)}

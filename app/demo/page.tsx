@@ -32,8 +32,8 @@ export default async function DemoPage() {
           <span aria-hidden className="mx-auto mt-6 block h-[3px] w-16 rounded-full bg-rouge" />
           <p className="mx-auto mt-7 max-w-xl text-read text-ink-soft">
             Thirty minutes on Google Meet to see how we teach and where your
-            French stands. Each class has two places, so you may share it with
-            one other learner.
+            French stands. Classes are small, so you may share yours with a
+            few other learners.
           </p>
         </header>
 

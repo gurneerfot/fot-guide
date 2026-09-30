@@ -207,7 +207,7 @@ export function BookingPanel({ slots, turnstileSiteKey }: { slots: Slot[]; turns
                     >
                       <span className="block font-semibold">{timeOf(slot.startsAt)}</span>
                       <span className={`block text-xs ${active ? 'text-white/80' : full ? '' : 'text-ink-soft'}`}>
-                        {full ? 'Full' : slot.seatsLeft === 1 ? '1 place left' : '2 places left'}
+                        {full ? 'Full' : slot.seatsLeft === 1 ? '1 place left' : `${slot.seatsLeft} places left`}
                       </span>
                     </button>
                   </li>

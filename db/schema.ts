@@ -336,25 +336,31 @@ export const demoSlots = pgTable(
   {
     id: uuid('id').primaryKey().defaultRandom(),
     startsAt: timestamp('starts_at', { withTimezone: true }).notNull(),
-    /** One call per slot, shared by both seats. Made when the slot is created. */
+    /** How many people may book this call. Set per slot by the owner. */
+    capacity: integer('capacity').notNull().default(2),
+    /** One call per slot, shared by every seat. Made when the slot is created. */
     meetUrl: text('meet_url').notNull(),
     /** Null when the link was pasted in by hand rather than made via Google Calendar. */
     googleEventId: text('google_event_id'),
     createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
   },
-  (t) => [uniqueIndex('demo_slots_starts_at_uq').on(t.startsAt)],
+  (t) => [
+    uniqueIndex('demo_slots_starts_at_uq').on(t.startsAt),
+    check('demo_slots_capacity_range', sql`${t.capacity} between 1 and 50`),
+  ],
 )
 
 /* -------------------------------------------------------- demo_bookings -- */
 
 /**
- * One seat taken in a demo slot. A slot holds two.
+ * One seat taken in a demo slot. A slot holds `capacity` of them.
  *
  * The seat number is what makes overbooking impossible rather than merely
- * unlikely: `(slot_id, seat)` is unique and `seat` can only be 1 or 2, so a
- * third row for the same slot cannot exist no matter how the requests race.
- * The booking transaction locks the slot first, so in practice the constraint
- * is never the thing that says no — it is there for when that code is wrong.
+ * unlikely: `(slot_id, seat)` is unique, and a trigger in migration 0008
+ * (`demo_bookings_seat_within_capacity`) refuses any seat above the slot's
+ * capacity — so a sixth row in a five-seat slot cannot exist no matter how the
+ * requests race. The booking transaction locks the slot first, so in practice
+ * neither is the thing that says no; they are there for when that code is wrong.
  *
  * `restrict` on the slot, so a slot with someone booked into it cannot be
  * deleted out from under them.
@@ -383,7 +389,7 @@ export const demoBookings = pgTable(
     // One person cannot take both seats of the same call.
     uniqueIndex('demo_bookings_slot_email_uq').on(t.slotId, sql`lower(${t.email})`),
     index('demo_bookings_ip_time_idx').on(t.ip, t.createdAt),
-    check('demo_bookings_seat_range', sql`${t.seat} between 1 and 2`),
+    check('demo_bookings_seat_positive', sql`${t.seat} >= 1`),
   ],
 )
 

@@ -242,8 +242,10 @@ So this is built for **attribution and deterrence**, not prevention:
 ## Demo class booking
 
 `/demo` lists free 30-minute demo classes in the visitor's own time zone. Each
-slot has two seats; both bookers join the same Google Meet. The owner adds and
-removes slots and sees who booked at `/admin`.
+slot has as many seats as the owner gives it (1–50, default 2), and everyone
+booked into it joins the same Google Meet. At `/admin` the owner plans a month
+at once — tick days on a calendar, list start times, set seats — removes empty
+slots, and sees who booked.
 
 It shares nothing with the shop but the database: two tables of its own
 (`demo_slots`, `demo_bookings`), its own login (`fot_study_admin` cookie,
@@ -254,7 +256,8 @@ Nothing in it can reach a buyer's access.
   server runs in UTC). Emails use the booker's zone, recorded at booking, and
   `ADMIN_TIME_ZONE` for the owner. Both carry an `.ics` invite.
 - **Overbooking** is impossible, not just unlikely: booking locks the slot row,
-  and `(slot_id, seat)` is unique with `seat` limited to 1–2.
+  `(slot_id, seat)` is unique, and a trigger refuses any seat above the slot's
+  `capacity`.
 - **One upcoming demo per email**, five bookings per IP a day, and optional
   Turnstile.
 - **The Meet link is made when the owner adds a slot**, not at booking, so a
@@ -267,7 +270,7 @@ Nothing in it can reach a buyer's access.
 2. Apply the migration, and only it:
 
    ```bash
-   pnpm db:migrate        # applies 0008_demo_booking: CREATE TABLE ×2, nothing else
+   pnpm db:migrate        # applies 0008_demo_booking: two new tables and a trigger on them, nothing else
    ```
 
    Production's history already holds 0000–0007 with matching hashes, so this
@@ -304,8 +307,10 @@ pnpm check       # purchase -> access flow, against DATABASE_URL
 **This deletes every row in the target database**, so it refuses to run unless
 `DATABASE_URL` is local — `.env.local` points at production. Use
 `DATABASE_URL=postgresql://postgres:dev@localhost:55432/fot_study_dev pnpm check`.
-`pnpm check:demo` covers demo booking the same way (five people racing for two
-seats, the seat constraint, time zones) and touches only the demo tables.
+`pnpm check:demo` covers demo booking the same way (people racing for the last
+seats, the capacity trigger, time zones) and touches only the demo tables.
+`pnpm demo:local` runs the whole site against a throwaway database to try it by
+hand.
 It covers the cases that quietly cost money: an unpaid order being provisioned,
 a retried webhook issuing a second code, three concurrent settlements racing, a
 repeat buyer getting a duplicate account, a reused Razorpay payment id, a

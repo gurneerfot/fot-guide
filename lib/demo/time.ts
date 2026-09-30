@@ -5,7 +5,10 @@
  */
 
 export const SLOT_MINUTES = 30
-export const SEATS_PER_SLOT = 2
+/** What a new slot offers unless the owner says otherwise. */
+export const DEFAULT_SEATS = 2
+/** Matches the `demo_slots_capacity_range` check. */
+export const MAX_SEATS = 50
 /** No booking a call that starts before the owner could reasonably see it. */
 export const BOOKING_CUTOFF_MINUTES = 60
 /** How far ahead the public page looks. */

@@ -40,11 +40,11 @@ async function main() {
   await reset()
 
   console.log('\nslots')
-  const a = await createSlot({ startsAt: hours(48), meetUrl: 'https://meet.google.com/aaa-bbbb-ccc' })
+  const a = await createSlot({ startsAt: hours(48), capacity: 2, meetUrl: 'https://meet.google.com/aaa-bbbb-ccc' })
   check('slot created with a pasted link', a.status === 'created')
-  const clash = await createSlot({ startsAt: new Date(hours(48).getTime() + 15 * 60_000), meetUrl: 'https://meet.google.com/x' })
+  const clash = await createSlot({ startsAt: new Date(hours(48).getTime() + 15 * 60_000), capacity: 2, meetUrl: 'https://meet.google.com/x' })
   check('a slot overlapping another is refused', clash.status === 'overlaps')
-  const noLink = await createSlot({ startsAt: hours(72) })
+  const noLink = await createSlot({ startsAt: hours(72), capacity: 2 })
   check('without Google or a link, a slot is refused', noLink.status === 'needs-link')
   if (a.status !== 'created') throw new Error('cannot continue')
 
@@ -62,7 +62,7 @@ async function main() {
   check('the public list shows it as full', listed?.seatsLeft === 0)
 
   console.log('\nrules')
-  const b = await createSlot({ startsAt: hours(96), meetUrl: 'https://meet.google.com/bbb-cccc-ddd' })
+  const b = await createSlot({ startsAt: hours(96), capacity: 2, meetUrl: 'https://meet.google.com/bbb-cccc-ddd' })
   if (b.status !== 'created') throw new Error('cannot continue')
   const winner = race.indexOf(won[0]) + 1
   const again = await bookSeat({ slotId: b.id, ...person(winner) })
@@ -72,7 +72,7 @@ async function main() {
   const twice = await bookSeat({ slotId: b.id, ...person(10), email: 'LEARNER10@example.com' })
   check('the same person cannot take both seats', first.status === 'booked' && twice.status === 'already-in-slot', twice.status)
 
-  const soon = await createSlot({ startsAt: new Date(Date.now() + 20 * 60_000), meetUrl: 'https://meet.google.com/soon' })
+  const soon = await createSlot({ startsAt: new Date(Date.now() + 20 * 60_000), capacity: 2, meetUrl: 'https://meet.google.com/soon' })
   if (soon.status === 'created') {
     const late = await bookSeat({ slotId: soon.id, ...person(20) })
     check('a slot inside the cutoff cannot be booked', late.status === 'closed', late.status)
@@ -91,7 +91,7 @@ async function main() {
   check('then the empty slot can be deleted', (await deleteSlot(b.id)).status === 'deleted')
 
   // Seat 1 freed while seat 2 is still held: the next booker must get seat 1.
-  const c = await createSlot({ startsAt: hours(120), meetUrl: 'https://meet.google.com/ccc' })
+  const c = await createSlot({ startsAt: hours(120), capacity: 2, meetUrl: 'https://meet.google.com/ccc' })
   if (c.status === 'created') {
     await bookSeat({ slotId: c.id, ...person(40) })
     await bookSeat({ slotId: c.id, ...person(41) })
@@ -101,14 +101,39 @@ async function main() {
     check('a freed seat 1 is reused, not collided with', refill.status === 'booked' && refill.seat === 1, refill.status)
   }
 
-  console.log('\nschema backstop')
-  let thirdRejected = false
-  try {
-    await db.insert(demoBookings).values({ slotId: a.id, seat: 3, ...person(50) })
-  } catch {
-    thirdRejected = true
+  console.log('\ncustom seats: eight people race for five')
+  const five = await createSlot({ startsAt: hours(144), capacity: 5, meetUrl: 'https://meet.google.com/fff' })
+  if (five.status !== 'created') throw new Error('cannot continue')
+  const rush = await Promise.all([60, 61, 62, 63, 64, 65, 66, 67].map((n) => bookSeat({ slotId: five.id, ...person(n) })))
+  check('exactly five bookings succeed', rush.filter((r) => r.status === 'booked').length === 5, rush.map((r) => r.status).join(','))
+  const fiveSeats = await db.select({ seat: demoBookings.seat }).from(demoBookings).where(eq(demoBookings.slotId, five.id))
+  check('seats 1–5, no gaps, no repeats', fiveSeats.map((s) => s.seat).sort().join() === '1,2,3,4,5')
+  check('the public list shows it full', (await listBookableSlots()).find((s) => s.id === five.id)?.seatsLeft === 0)
+  const one = await createSlot({ startsAt: hours(168), capacity: 1, meetUrl: 'https://meet.google.com/one' })
+  if (one.status === 'created') {
+    const solo = await Promise.all([70, 71].map((n) => bookSeat({ slotId: one.id, ...person(n) })))
+    check('a one-seat slot takes exactly one', solo.filter((r) => r.status === 'booked').length === 1)
   }
-  check('the database itself refuses a seat 3', thirdRejected)
+
+  console.log('\nschema backstop')
+  const refused = async (seat: number, slotId: string) => {
+    try {
+      await db.insert(demoBookings).values({ slotId, seat, ...person(50 + seat) })
+      return false
+    } catch {
+      return true
+    }
+  }
+  check('the database refuses seat 3 in a two-seat slot', await refused(3, a.id))
+  check('the database refuses seat 6 in a five-seat slot', await refused(6, five.id))
+  check('the database refuses seat 0', await refused(0, a.id))
+  let tooBig = false
+  try {
+    await db.insert(demoSlots).values({ startsAt: hours(200), capacity: 51, meetUrl: 'https://meet.google.com/big' })
+  } catch {
+    tooBig = true
+  }
+  check('the database refuses more than 50 seats', tooBig)
 
   console.log('\ntime zones')
   const at = new Date('2026-11-10T13:30:00Z')

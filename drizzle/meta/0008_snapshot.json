@@ -1,5 +1,5 @@
 {
-  "id": "7c40a1a9-f05c-43d8-ba22-3aa4ba49bb10",
+  "id": "bd2f7e79-6f3a-4b52-8c22-b33580dd90bd",
   "prevId": "2ac8dfd9-a642-4ee7-b1b2-9b98ba505e42",
   "version": "7",
   "dialect": "postgresql",
@@ -155,9 +155,9 @@
       "uniqueConstraints": {},
       "policies": {},
       "checkConstraints": {
-        "demo_bookings_seat_range": {
-          "name": "demo_bookings_seat_range",
-          "value": "\"demo_bookings\".\"seat\" between 1 and 2"
+        "demo_bookings_seat_positive": {
+          "name": "demo_bookings_seat_positive",
+          "value": "\"demo_bookings\".\"seat\" >= 1"
         }
       },
       "isRLSEnabled": false
@@ -178,6 +178,13 @@
           "type": "timestamp with time zone",
           "primaryKey": false,
           "notNull": true
+        },
+        "capacity": {
+          "name": "capacity",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true,
+          "default": 2
         },
         "meet_url": {
           "name": "meet_url",
@@ -220,7 +227,12 @@
       "compositePrimaryKeys": {},
       "uniqueConstraints": {},
       "policies": {},
-      "checkConstraints": {},
+      "checkConstraints": {
+        "demo_slots_capacity_range": {
+          "name": "demo_slots_capacity_range",
+          "value": "\"demo_slots\".\"capacity\" between 1 and 50"
+        }
+      },
       "isRLSEnabled": false
     },
     "public.entitlements": {

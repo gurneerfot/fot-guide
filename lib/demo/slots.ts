@@ -3,7 +3,6 @@ import { db, demoBookings, demoSlots } from '@/db'
 import {
   BOOKING_CUTOFF_MINUTES,
   BOOKING_HORIZON_DAYS,
-  SEATS_PER_SLOT,
   SLOT_MINUTES,
   slotEnd,
 } from './time'
@@ -11,7 +10,7 @@ import { createMeetEvent, deleteMeetEvent, googleConfigured } from './google'
 
 /* ------------------------------------------------------------- public -- */
 
-export type OpenSlot = { id: string; startsAt: Date; seatsLeft: number }
+export type OpenSlot = { id: string; startsAt: Date; capacity: number; seatsLeft: number }
 
 /**
  * What the public page lists: bookable slots only. Full slots stay in the list
@@ -22,7 +21,12 @@ export async function listBookableSlots(): Promise<OpenSlot[]> {
   const until = new Date(Date.now() + BOOKING_HORIZON_DAYS * 24 * 60 * 60_000)
 
   const rows = await db
-    .select({ id: demoSlots.id, startsAt: demoSlots.startsAt, taken: count(demoBookings.id) })
+    .select({
+      id: demoSlots.id,
+      startsAt: demoSlots.startsAt,
+      capacity: demoSlots.capacity,
+      taken: count(demoBookings.id),
+    })
     .from(demoSlots)
     .leftJoin(demoBookings, eq(demoBookings.slotId, demoSlots.id))
     .where(and(gt(demoSlots.startsAt, from), lt(demoSlots.startsAt, until)))
@@ -32,7 +36,8 @@ export async function listBookableSlots(): Promise<OpenSlot[]> {
   return rows.map((r) => ({
     id: r.id,
     startsAt: r.startsAt,
-    seatsLeft: Math.max(0, SEATS_PER_SLOT - Number(r.taken)),
+    capacity: r.capacity,
+    seatsLeft: Math.max(0, r.capacity - Number(r.taken)),
   }))
 }
 
@@ -47,28 +52,28 @@ export type BookingInput = {
 }
 
 export type BookingResult =
-  | { status: 'booked'; bookingId: string; seat: number; startsAt: Date; meetUrl: string }
+  | { status: 'booked'; bookingId: string; seat: number; capacity: number; startsAt: Date; meetUrl: string }
   | { status: 'not-found' }
   | { status: 'closed' }
   | { status: 'full' }
   | { status: 'already-in-slot' }
   | { status: 'already-booked'; startsAt: Date }
 
-type LockedSlot = { id: string; starts_at: Date | string; meet_url: string }
+type LockedSlot = { id: string; starts_at: Date | string; meet_url: string; capacity: number }
 
 /**
  * Takes a seat, or says why not.
  *
  * `FOR UPDATE` on the slot row makes every booking for one slot wait its turn,
  * so two people racing for the last seat are decided one after the other
- * rather than both reading "one left". The unique `(slot_id, seat)` index is
- * the backstop if that ever stops being true.
+ * rather than both reading "one left". The unique `(slot_id, seat)` index and
+ * the seat-within-capacity trigger are the backstop if that ever stops being true.
  */
 export async function bookSeat(input: BookingInput): Promise<BookingResult> {
   try {
     return await db.transaction(async (tx) => {
       const locked = await tx.execute(
-        sql`select id, starts_at, meet_url from demo_slots where id = ${input.slotId} for update`,
+        sql`select id, starts_at, meet_url, capacity from demo_slots where id = ${input.slotId} for update`,
       )
       const slot = locked.rows[0] as LockedSlot | undefined
       if (!slot) return { status: 'not-found' as const }
@@ -90,7 +95,7 @@ export async function bookSeat(input: BookingInput): Promise<BookingResult> {
 
       // The lowest free seat, not `count + 1`: if the owner removed seat 1,
       // the next booker takes seat 1 rather than colliding with seat 2.
-      const seat = Array.from({ length: SEATS_PER_SLOT }, (_, i) => i + 1).find(
+      const seat = Array.from({ length: slot.capacity }, (_, i) => i + 1).find(
         (n) => !taken.some((b) => b.seat === n),
       )
       if (!seat) return { status: 'full' as const }
@@ -119,19 +124,27 @@ export async function bookSeat(input: BookingInput): Promise<BookingResult> {
         })
         .returning({ id: demoBookings.id })
 
-      return { status: 'booked' as const, bookingId: row.id, seat, startsAt, meetUrl: slot.meet_url }
+      return {
+        status: 'booked' as const,
+        bookingId: row.id,
+        seat,
+        capacity: slot.capacity,
+        startsAt,
+        meetUrl: slot.meet_url,
+      }
     })
   } catch (error) {
-    // 23505: a unique index said no — the lock was bypassed somehow, and the
-    // schema did its job. To the booker it means the same thing as full.
-    if (isUniqueViolation(error)) return { status: 'full' }
+    // 23505 / 23514: a unique index or the capacity trigger said no — the lock
+    // was bypassed somehow, and the schema did its job. To the booker it means
+    // the same thing as full.
+    if (hasCode(error, '23505') || hasCode(error, '23514')) return { status: 'full' }
     throw error
   }
 }
 
-function isUniqueViolation(error: unknown): boolean {
+function hasCode(error: unknown, code: string): boolean {
   for (let e = error as { code?: string; cause?: unknown } | undefined; e; e = e.cause as typeof e) {
-    if (e.code === '23505') return true
+    if (e.code === code) return true
   }
   return false
 }
@@ -172,7 +185,11 @@ export type CreateSlotResult =
  * nothing behind here, and it surfaces to the owner at the moment they can
  * retry — never to a visitor mid-booking.
  */
-export async function createSlot(input: { startsAt: Date; meetUrl?: string }): Promise<CreateSlotResult> {
+export async function createSlot(input: {
+  startsAt: Date
+  capacity: number
+  meetUrl?: string
+}): Promise<CreateSlotResult> {
   // One owner, one call at a time: no slot may start within 30 minutes of another.
   const window = SLOT_MINUTES * 60_000
   const [clash] = await db
@@ -199,10 +216,10 @@ export async function createSlot(input: { startsAt: Date; meetUrl?: string }): P
   }
 
   try {
-    await db.insert(demoSlots).values({ id, startsAt: input.startsAt, meetUrl, googleEventId })
+    await db.insert(demoSlots).values({ id, startsAt: input.startsAt, capacity: input.capacity, meetUrl, googleEventId })
   } catch (error) {
     if (googleEventId) await deleteMeetEvent(googleEventId).catch(() => {})
-    if (isUniqueViolation(error)) return { status: 'overlaps' }
+    if (hasCode(error, '23505')) return { status: 'overlaps' }
     throw error
   }
   return { status: 'created', id }
