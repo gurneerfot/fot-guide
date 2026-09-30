@@ -73,12 +73,14 @@ export function BookingPanel({ slots, turnstileSiteKey }: { slots: Slot[]; turns
     return [...groups.values()]
   }, [slots, timeZone])
 
-  const timeOf = (iso: string) =>
-    timeZone
-      ? new Intl.DateTimeFormat('en-GB', { timeZone, hour: 'numeric', minute: '2-digit', hour12: true }).format(
-          new Date(iso),
-        )
-      : ''
+  /** "6:00–6:30 pm" in the visitor's zone, matching how the owner plans them. */
+  const timeOf = (iso: string) => {
+    if (!timeZone) return ''
+    const start = new Date(iso)
+    return new Intl.DateTimeFormat('en-GB', { timeZone, hour: 'numeric', minute: '2-digit', hour12: true })
+      .formatRange(start, new Date(start.getTime() + 30 * 60_000))
+      .replace(/\s*–\s*/, '–')
+  }
 
   const selectedSlot = slots.find((s) => s.id === selected) ?? null
   const selectedLabel =
