@@ -279,8 +279,8 @@ Nothing in it can reach a buyer's access.
    `ADMIN_SESSION_SECRET`, `ADMIN_EMAIL`, `ADMIN_TIME_ZONE` in Vercel.
 4. Google Meet links (see below) — required; slots cannot be created without them.
 5. Deploy, sign in at `/admin`, add a slot, book it yourself at `/demo`.
-6. Set `NEXT_PUBLIC_DEMO_BOOKING=on` and redeploy to move the header button
-   off Calendly.
+6. The header's "Book a Free Demo Class" button opens `/demo`, so plan some
+   slots before a deploy that visitors will see.
 
 ### Google Meet links on a personal account
 

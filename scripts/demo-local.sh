@@ -65,7 +65,6 @@ export ADMIN_SESSION_SECRET
 ADMIN_SESSION_SECRET=$(node -e "process.stdout.write(require('crypto').randomBytes(48).toString('base64'))")
 export ADMIN_EMAIL=${ADMIN_EMAIL:-francaisontips@gmail.com}
 export ADMIN_TIME_ZONE=${ADMIN_TIME_ZONE:-Asia/Kolkata}
-export NEXT_PUBLIC_DEMO_BOOKING=on
 export NEXT_PUBLIC_SITE_URL=http://localhost:$PORT
 
 if grep -q '^GOOGLE_REFRESH_TOKEN=..' .env.local 2>/dev/null; then

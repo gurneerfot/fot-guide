@@ -18,15 +18,8 @@ import { IconCalendar, IconClose, IconMenu } from './icons'
  */
 
 const MAIN_SITE = 'https://francaisontips.com'
-/**
- * Calendly until the booking page here is switched on. The flag is read at
- * build time, so flipping it needs a redeploy — which is the point: the button
- * only moves once the demo tables, admin login and Meet links are in place.
- */
-const DEMO_HERE = process.env.NEXT_PUBLIC_DEMO_BOOKING === 'on'
-const BOOK_DEMO = DEMO_HERE ? '/demo' : 'https://calendly.com/francaisontips/bookdemo'
-/** Calendly opens in a new tab; our own page does not. */
-const BOOK_DEMO_TARGET = DEMO_HERE ? {} : { target: '_blank', rel: 'noopener noreferrer' }
+/** Demo classes are booked here, on this deployment — no longer on Calendly. */
+const BOOK_DEMO = '/demo'
 
 type NavItem = {
   label: string
@@ -167,14 +160,13 @@ export function SiteHeader() {
           )}
 
           {/* Phones get it in the panel instead — see below. */}
-          <a
+          <Link
             href={BOOK_DEMO}
-            {...BOOK_DEMO_TARGET}
             className="hidden items-center gap-2 rounded-lg bg-ink px-5 py-2.5 text-sm font-semibold text-white transition-colors duration-200 hover:bg-ink-deep sm:inline-flex"
           >
             <IconCalendar className="size-[1.125rem]" />
             Book a Free Demo Class
-          </a>
+          </Link>
 
           <button
             type="button"
@@ -216,15 +208,14 @@ export function SiteHeader() {
           </ul>
 
           <div className="mx-auto w-full max-w-7xl px-5 pb-5 sm:hidden">
-            <a
+            <Link
               href={BOOK_DEMO}
-              {...BOOK_DEMO_TARGET}
               onClick={() => setOpen(false)}
               className="flex items-center justify-center gap-2 rounded-lg bg-ink px-5 py-3 text-sm font-semibold text-white transition-colors duration-200 hover:bg-ink-deep"
             >
               <IconCalendar className="size-[1.125rem]" />
               Book a Free Demo Class
-            </a>
+            </Link>
           </div>
         </nav>
       )}
