@@ -4,6 +4,7 @@ import Script from 'next/script'
 import { useRouter } from 'next/navigation'
 import { useMemo, useRef, useState, useSyncExternalStore } from 'react'
 import { IconCheck } from '@/app/_components/icons'
+import { TimeZonePicker } from './time-zone-picker'
 
 type Slot = { id: string; startsAt: string; seatsLeft: number }
 
@@ -33,19 +34,46 @@ function useBrowserTimeZone(): string | null {
   )
 }
 
-function allTimeZones(): string[] {
+/**
+ * A zone the visitor picked on an earlier visit. Per-browser convenience only:
+ * storage can be blocked or empty, and then the detected zone is used.
+ */
+const ZONE_KEY = 'fot-demo-time-zone'
+
+function readStoredZone(): string | null {
   try {
-    return Intl.supportedValuesOf('timeZone')
+    const value = window.localStorage.getItem(ZONE_KEY)
+    if (!value) return null
+    new Intl.DateTimeFormat('en', { timeZone: value })
+    return value
   } catch {
-    return []
+    return null
+  }
+}
+
+function storeZone(zone: string | null) {
+  try {
+    if (zone) window.localStorage.setItem(ZONE_KEY, zone)
+    else window.localStorage.removeItem(ZONE_KEY)
+  } catch {
+    // Private mode or blocked storage: the choice just is not remembered.
   }
 }
 
 export function BookingPanel({ slots, turnstileSiteKey }: { slots: Slot[]; turnstileSiteKey?: string }) {
   const router = useRouter()
   const browserZone = useBrowserTimeZone()
-  const [chosenZone, setChosenZone] = useState<string | null>(null)
-  const timeZone = chosenZone ?? browserZone
+  const storedZone = useSyncExternalStore(noSubscribe, readStoredZone, () => null)
+  // `undefined` = nothing picked on this visit yet, so a remembered choice wins.
+  const [chosenZone, setChosenZone] = useState<string | undefined>(undefined)
+  const timeZone = chosenZone ?? storedZone ?? browserZone
+
+  function pickZone(zone: string) {
+    setChosenZone(zone)
+    // Going back to the detected zone forgets the override, so a later trip
+    // abroad is picked up automatically.
+    storeZone(zone === browserZone ? null : zone)
+  }
 
   const [selected, setSelected] = useState<string | null>(null)
   const [form, setForm] = useState({ name: '', email: '', phone: '', levelNote: '' })
@@ -93,6 +121,9 @@ export function BookingPanel({ slots, turnstileSiteKey }: { slots: Slot[]; turns
           hour: 'numeric',
           minute: '2-digit',
           hour12: true,
+          // Named in the summary too, so a visitor who changed zone and forgot
+          // sees which clock they are booking against.
+          timeZoneName: 'short',
         }).format(new Date(selectedSlot.startsAt))
       : null
 
@@ -164,26 +195,10 @@ export function BookingPanel({ slots, turnstileSiteKey }: { slots: Slot[]; turns
     return <div className="mx-auto h-64 max-w-xl animate-pulse rounded-card border border-rule bg-card" />
   }
 
-  const zones = allTimeZones()
-
   return (
     <div className="grid items-start gap-8 lg:grid-cols-[minmax(0,1fr)_24rem] lg:gap-10">
       <section aria-label="Available times" className="space-y-6">
-        <label className="flex flex-wrap items-center gap-x-3 gap-y-1.5 text-sm text-ink-soft">
-          <span>Times shown in</span>
-          <select
-            value={timeZone}
-            onChange={(e) => setChosenZone(e.target.value)}
-            className="max-w-full rounded-lg border border-rule bg-card px-3 py-1.5 font-semibold text-ink"
-          >
-            {!zones.includes(timeZone) && <option value={timeZone}>{timeZone}</option>}
-            {zones.map((z) => (
-              <option key={z} value={z}>
-                {z.replace(/_/g, ' ')}
-              </option>
-            ))}
-          </select>
-        </label>
+        <TimeZonePicker value={timeZone} detected={browserZone} onChange={pickZone} />
 
         {days.map((day) => (
           <div key={day.label} className="rounded-card border border-rule bg-card p-5 shadow-card sm:p-6">
