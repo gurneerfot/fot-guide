@@ -15,11 +15,6 @@ const create = z.object({
     .min(1, 'At least one seat.')
     .max(MAX_SEATS, `At most ${MAX_SEATS} seats.`)
     .default(DEFAULT_SEATS),
-  meetUrl: z
-    .url({ protocol: /^https$/, error: 'The link must start with https://' })
-    .max(300)
-    .optional()
-    .or(z.literal('')),
 })
 
 const remove = z.object({ id: z.uuid() })
@@ -47,7 +42,6 @@ export async function POST(request: Request) {
     const result = await createSlot({
       startsAt,
       capacity: parsed.data.capacity,
-      meetUrl: parsed.data.meetUrl || undefined,
     })
     switch (result.status) {
       case 'created':
@@ -59,8 +53,11 @@ export async function POST(request: Request) {
         )
       case 'needs-link':
         return NextResponse.json(
-          { error: 'Google Calendar is not connected yet — paste a Meet link for this slot.' },
-          { status: 400 },
+          {
+            error:
+              'Google Calendar is not connected. Set GOOGLE_CLIENT_ID, GOOGLE_CLIENT_SECRET and GOOGLE_REFRESH_TOKEN.',
+          },
+          { status: 503 },
         )
     }
   } catch (error) {

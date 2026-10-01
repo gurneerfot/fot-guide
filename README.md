@@ -277,12 +277,15 @@ Nothing in it can reach a buyer's access.
    runs the new file alone. Never `db:push` against production.
 3. `pnpm admin:password`, `openssl rand -base64 48` → set `ADMIN_PASSWORD_HASH`,
    `ADMIN_SESSION_SECRET`, `ADMIN_EMAIL`, `ADMIN_TIME_ZONE` in Vercel.
-4. Google (optional, see below) or paste a Meet link per slot.
+4. Google Meet links (see below) — required; slots cannot be created without them.
 5. Deploy, sign in at `/admin`, add a slot, book it yourself at `/demo`.
 6. Set `NEXT_PUBLIC_DEMO_BOOKING=on` and redeploy to move the header button
    off Calendly.
 
 ### Google Meet links on a personal account
+
+Required: each slot gets its own Meet link from Google Calendar, and `/admin`
+refuses to create slots while the `GOOGLE_*` variables are missing.
 
 1. console.cloud.google.com → new project → enable **Google Calendar API**.
 2. OAuth consent screen → External → add the `calendar.events` scope → then
@@ -293,6 +296,7 @@ Nothing in it can reach a buyer's access.
    `.env.local`.
 4. `pnpm google:auth`, sign in as **francaisontips@gmail.com** (the account that hosts the calls), copy
    `GOOGLE_REFRESH_TOKEN` into Vercel.
+5. `pnpm google:check` creates and deletes one test event to prove it works.
 
 Bookers are not added as guests, so Meet shows them a waiting screen and the
 host admits them — the host must be signed in as that account. If slot creation

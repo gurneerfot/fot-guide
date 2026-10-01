@@ -27,7 +27,7 @@ async function main() {
 
   await deleteMeetEvent(event.eventId)
   console.log('  ok   test event deleted again')
-  console.log('\nGoogle is set up. Slots planned with the Meet link box empty will get their own link.')
+  console.log('\nGoogle is set up. Every slot planned in /admin will get its own Meet link.')
 }
 
 main().catch((error) => {

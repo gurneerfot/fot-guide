@@ -88,7 +88,6 @@ export function SlotPlanner({ googleConnected, existing }: { googleConnected: bo
   const [days, setDays] = useState<Set<string>>(new Set())
   const [times, setTimes] = useState<Set<string>>(new Set())
   const [seats, setSeats] = useState(2)
-  const [meetUrl, setMeetUrl] = useState('')
   const [progress, setProgress] = useState<Progress | null>(null)
   const [error, setError] = useState<string | null>(null)
 
@@ -170,8 +169,8 @@ export function SlotPlanner({ googleConnected, existing }: { googleConnected: bo
 
   async function create() {
     setError(null)
-    if (!googleConnected && !meetUrl) {
-      setError('Paste a Meet link — Google Calendar is not connected.')
+    if (!googleConnected) {
+      setError('Google Calendar is not connected, so no Meet links can be made.')
       return
     }
     const state: Progress = { done: 0, total: toCreate.length, created: 0, skipped: 0, failed: [] }
@@ -185,7 +184,6 @@ export function SlotPlanner({ googleConnected, existing }: { googleConnected: bo
         const failure = await call('/api/admin/slots', 'POST', {
           startsAt: at.toISOString(),
           capacity: seats,
-          meetUrl,
         })
         state.done++
         if (!failure) state.created++
@@ -397,20 +395,6 @@ export function SlotPlanner({ googleConnected, existing }: { googleConnected: bo
           </div>
         </label>
 
-        <label className="block">
-          <span className="text-sm font-semibold text-ink">
-            Meet link {googleConnected ? '(optional — leave empty for a new link per slot)' : '(used for every slot)'}
-          </span>
-          <input
-            type="url"
-            value={meetUrl}
-            onChange={(e) => setMeetUrl(e.target.value)}
-            disabled={busy}
-            placeholder="https://meet.google.com/abc-defg-hij"
-            className={`${input} mt-2 w-full`}
-          />
-        </label>
-
         <div className="rounded-lg border border-rule bg-paper p-4">
           <p className="text-sm text-ink">
             <span className="font-semibold">{days.size}</span> day{days.size === 1 ? '' : 's'} ×{' '}
@@ -423,7 +407,7 @@ export function SlotPlanner({ googleConnected, existing }: { googleConnected: bo
           )}
           <button
             type="button"
-            disabled={busy || toCreate.length === 0}
+            disabled={busy || toCreate.length === 0 || !googleConnected}
             onClick={create}
             className="mt-3 w-full rounded-lg bg-ink px-5 py-3 font-semibold text-white hover:bg-ink-deep disabled:opacity-50"
           >
