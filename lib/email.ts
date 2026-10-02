@@ -11,7 +11,7 @@ import { purchaseMessage, whatsappUrl } from '@/lib/contact'
 
 const API = 'https://api.resend.com/emails'
 
-type SendResult = { sent: boolean; reason?: string }
+type SendResult = { sent: boolean; reason?: string; id?: string }
 
 export async function send(input: {
   to: string
@@ -21,6 +21,8 @@ export async function send(input: {
   attachments?: { filename: string; content: string }[]
   /** Where a reply goes, when that is not the sending address. */
   replyTo?: string
+  /** Hand the email to Resend now but deliver it then. At most 30 days ahead. */
+  scheduledAt?: Date
 }): Promise<SendResult> {
   const key = process.env.RESEND_API_KEY
   const from = process.env.EMAIL_FROM
@@ -42,13 +44,15 @@ export async function send(input: {
         html: input.html,
         attachments: input.attachments,
         reply_to: input.replyTo,
+        scheduled_at: input.scheduledAt?.toISOString(),
       }),
     })
     if (!response.ok) {
       console.error('[email] send failed', response.status, await response.text())
       return { sent: false, reason: `http-${response.status}` }
     }
-    return { sent: true }
+    const body = (await response.json().catch(() => ({}))) as { id?: string }
+    return { sent: true, id: body.id }
   } catch (error) {
     console.error('[email] send threw', error)
     return { sent: false, reason: 'threw' }

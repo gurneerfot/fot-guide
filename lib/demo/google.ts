@@ -3,12 +3,17 @@
  *
  * A personal Gmail account cannot be driven by a service account (that needs
  * Workspace domain-wide delegation), so this acts as the owner with a refresh
- * token they granted once through `pnpm google:auth`. Each slot becomes one
- * event on the owner's calendar, and the Meet link on that event is the one
- * both bookers are sent.
+ * token they granted once through `pnpm google:auth`.
+ *
+ * Nothing touches the calendar until someone books. Each booking then becomes
+ * its own event on the owner's calendar with the booker as its only guest, so
+ * Google puts it in their calendar too and nobody sees another booker's
+ * address. The first booking of a slot starts a Meet call; every later
+ * booking's event copies that call's conference data, so everyone in a slot
+ * still joins the same room.
  *
  * The OAuth app must be "In production" in Google Cloud: in "Testing" the
- * refresh token dies after seven days and slot creation starts failing.
+ * refresh token dies after seven days and bookings start failing.
  */
 
 const TOKEN_URL = 'https://oauth2.googleapis.com/token'
@@ -61,67 +66,99 @@ async function accessToken(cfg: Config): Promise<string> {
   return body.access_token
 }
 
+/**
+ * The part of an event that *is* the Meet call. Copied onto another event, it
+ * puts that event in the same call — which is how every booking in a slot
+ * shares one link while each booker gets an invite of their own.
+ */
+export type Conference = {
+  conferenceId: string
+  conferenceSolution: unknown
+  entryPoints: { entryPointType: string; uri: string; [key: string]: unknown }[]
+}
+
 type GoogleEvent = {
   id: string
   hangoutLink?: string
   conferenceData?: {
+    conferenceId?: string
+    conferenceSolution?: unknown
+    entryPoints?: Conference['entryPoints']
     createRequest?: { status?: { statusCode?: string } }
-    entryPoints?: { entryPointType: string; uri: string }[]
   }
 }
 
-function meetLink(event: GoogleEvent): string | null {
-  return (
-    event.hangoutLink ??
-    event.conferenceData?.entryPoints?.find((e) => e.entryPointType === 'video')?.uri ??
-    null
-  )
+function conferenceOf(event: GoogleEvent): Conference | null {
+  const data = event.conferenceData
+  if (!data?.conferenceId || !data.entryPoints?.some((e) => e.entryPointType === 'video')) return null
+  return { conferenceId: data.conferenceId, conferenceSolution: data.conferenceSolution, entryPoints: data.entryPoints }
+}
+
+export function meetUrlOf(conference: Conference): string {
+  return conference.entryPoints.find((e) => e.entryPointType === 'video')!.uri
 }
 
 /**
- * Creates the calendar event and its Meet link.
- *
- * `requestId` is the slot's own id, so a retried request asks Google for the
- * same conference rather than a second one.
+ * Whether Google emails the booker an invite. On by default; `pnpm demo:local`
+ * turns it off so trying the site locally does not send real invitations.
  */
-export async function createMeetEvent(input: {
-  slotId: string
-  startsAt: Date
-  endsAt: Date
-}): Promise<{ eventId: string; meetUrl: string }> {
+function sendUpdates(notify: boolean): 'all' | 'none' {
+  return notify && process.env.GOOGLE_SEND_INVITES !== 'off' ? 'all' : 'none'
+}
+
+async function authed(): Promise<{ cfg: Config; token: string }> {
   const cfg = config()
   if (!cfg) throw new Error('Google Calendar is not configured')
-  const token = await accessToken(cfg)
+  return { cfg, token: await accessToken(cfg) }
+}
 
-  const response = await fetch(`${EVENTS_URL(cfg.calendarId)}?conferenceDataVersion=1&sendUpdates=none`, {
-    method: 'POST',
-    headers: { authorization: `Bearer ${token}`, 'content-type': 'application/json' },
-    body: JSON.stringify({
-      summary: 'Français on Tips — free demo class',
-      description: 'Booked through the demo page. Bookings are listed in /admin.',
-      start: { dateTime: input.startsAt.toISOString() },
-      end: { dateTime: input.endsAt.toISOString() },
-      // Bookers are never added as guests, but if the owner adds anyone by
-      // hand, two strangers should still not see each other's addresses.
-      guestsCanSeeOtherGuests: false,
-      guestsCanInviteOthers: false,
-      conferenceData: {
-        createRequest: {
-          requestId: input.slotId,
-          conferenceSolutionKey: { type: 'hangoutsMeet' },
+/**
+ * Creates one event for one booking.
+ *
+ * With `conference` null it starts a new Meet call; otherwise it joins that
+ * call. `requestId` is the booking's id, so a retried request asks Google for
+ * the same new call rather than a second one.
+ */
+export async function createDemoEvent(input: {
+  requestId: string
+  startsAt: Date
+  endsAt: Date
+  summary: string
+  description: string
+  attendee?: { email: string; name: string }
+  conference: Conference | null
+}): Promise<{ eventId: string; conference: Conference; meetUrl: string }> {
+  const { cfg, token } = await authed()
+  const notify = Boolean(input.attendee)
+
+  const response = await fetch(
+    `${EVENTS_URL(cfg.calendarId)}?conferenceDataVersion=1&sendUpdates=${sendUpdates(notify)}`,
+    {
+      method: 'POST',
+      headers: { authorization: `Bearer ${token}`, 'content-type': 'application/json' },
+      body: JSON.stringify({
+        summary: input.summary,
+        description: input.description,
+        start: { dateTime: input.startsAt.toISOString() },
+        end: { dateTime: input.endsAt.toISOString() },
+        attendees: input.attendee ? [{ email: input.attendee.email, displayName: input.attendee.name }] : [],
+        guestsCanSeeOtherGuests: false,
+        guestsCanInviteOthers: false,
+        conferenceData: input.conference ?? {
+          createRequest: { requestId: input.requestId, conferenceSolutionKey: { type: 'hangoutsMeet' } },
         },
-      },
-    }),
-  })
+      }),
+    },
+  )
   if (!response.ok) {
     throw new Error(`Google Calendar rejected the event (${response.status}): ${await response.text()}`)
   }
 
   let event = (await response.json()) as GoogleEvent
 
-  // Conference creation is asynchronous on Google's side. It is almost always
-  // done by the time the insert returns; when it is not, it is within seconds.
-  for (let attempt = 0; !meetLink(event) && attempt < 4; attempt++) {
+  // A new call is created asynchronously on Google's side. It is almost always
+  // ready by the time the insert returns; when it is not, it is within seconds.
+  for (let attempt = 0; !conferenceOf(event) && attempt < 4; attempt++) {
     if (event.conferenceData?.createRequest?.status?.statusCode === 'failure') break
     await new Promise((resolve) => setTimeout(resolve, 750 * (attempt + 1)))
     const again = await fetch(`${EVENTS_URL(cfg.calendarId)}/${encodeURIComponent(event.id)}`, {
@@ -130,24 +167,42 @@ export async function createMeetEvent(input: {
     if (again.ok) event = (await again.json()) as GoogleEvent
   }
 
-  const url = meetLink(event)
-  if (!url) {
-    await deleteMeetEvent(event.id).catch(() => {})
+  const conference = conferenceOf(event)
+  if (!conference) {
+    await deleteDemoEvent(event.id, { notify: false }).catch(() => {})
     throw new Error('Google created the event but did not attach a Meet link')
   }
-  return { eventId: event.id, meetUrl: url }
+  return { eventId: event.id, conference, meetUrl: meetUrlOf(conference) }
 }
 
-/** Best-effort. An orphaned calendar event is clutter, not harm. */
-export async function deleteMeetEvent(eventId: string): Promise<void> {
+/**
+ * The call on an existing event — used for slots made before bookings had
+ * their own events, whose one slot-wide event holds the call. Null if the
+ * event is gone or has no call.
+ */
+export async function eventConference(eventId: string): Promise<Conference | null> {
+  const { cfg, token } = await authed()
+  const response = await fetch(`${EVENTS_URL(cfg.calendarId)}/${encodeURIComponent(eventId)}`, {
+    headers: { authorization: `Bearer ${token}` },
+  })
+  if (response.status === 404 || response.status === 410) return null
+  if (!response.ok) throw new Error(`Google Calendar read failed (${response.status}): ${await response.text()}`)
+  const event = (await response.json()) as GoogleEvent & { status?: string }
+  return event.status === 'cancelled' ? null : conferenceOf(event)
+}
+
+/**
+ * Removes an event. With `notify`, a booker on it gets Google's cancellation
+ * email. An event already deleted by hand is the outcome wanted, not an error.
+ */
+export async function deleteDemoEvent(eventId: string, options: { notify: boolean }): Promise<void> {
   const cfg = config()
   if (!cfg) return
   const token = await accessToken(cfg)
   const response = await fetch(
-    `${EVENTS_URL(cfg.calendarId)}/${encodeURIComponent(eventId)}?sendUpdates=none`,
+    `${EVENTS_URL(cfg.calendarId)}/${encodeURIComponent(eventId)}?sendUpdates=${sendUpdates(options.notify)}`,
     { method: 'DELETE', headers: { authorization: `Bearer ${token}` } },
   )
-  // 410: already deleted by hand in Google Calendar — the outcome we wanted.
   if (!response.ok && response.status !== 404 && response.status !== 410) {
     throw new Error(`Google Calendar delete failed (${response.status}): ${await response.text()}`)
   }

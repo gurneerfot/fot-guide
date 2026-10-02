@@ -83,7 +83,7 @@ export function RemoveBookingButton({ id, name }: { id: string; name: string }) 
   return (
     <ConfirmButton
       label="Remove"
-      confirmText={`Remove ${name}'s booking? Their seat opens up again. They are not emailed — tell them yourself.`}
+      confirmText={`Remove ${name}'s booking? Their seat opens up, the class is taken off both calendars (Google emails them a cancellation) and their reminder is cancelled.`}
       run={() => call('/api/admin/bookings', 'DELETE', { id })}
     />
   )

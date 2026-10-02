@@ -260,9 +260,19 @@ Nothing in it can reach a buyer's access.
   `capacity`.
 - **One upcoming demo per email**, five bookings per IP a day, and optional
   Turnstile.
-- **The Meet link is made when the owner adds a slot**, not at booking, so a
-  Google failure shows up to the owner at the moment they can retry, never to a
-  visitor.
+- **Nothing goes on a calendar until someone books.** Each booking then gets
+  its own Google Calendar event on the owner's calendar with the booker as its
+  only guest, so Google invites them too. The first booking of a slot starts
+  its Meet call; later bookings' events copy that call, so everyone in a slot
+  shares one link. If Google refuses, the booking is rolled back and the visitor
+  asked to retry — and the owner is emailed why.
+- **Reminder emails** go out an hour before each class: scheduled with Resend
+  at booking time (at most 30 days ahead), with a daily Vercel Cron job
+  (`/api/cron/demo-reminders`, needs `CRON_SECRET`) catching bookings further
+  out and any that failed. Removing a booking deletes its event (Google tells
+  the booker) and cancels its reminder.
+- `pnpm demo:upgrade` (dry run; `--apply` to act) was the one-off that removed
+  the empty calendar events of slots planned before per-booking events.
 
 ### Switching it on
 

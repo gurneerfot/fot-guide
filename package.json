@@ -19,7 +19,8 @@
     "admin:password": "tsx scripts/admin-password.ts",
     "google:auth": "tsx --env-file=.env.local scripts/google-auth.ts",
     "demo:local": "bash scripts/demo-local.sh",
-    "google:check": "tsx --env-file=.env.local scripts/google-check.ts"
+    "google:check": "tsx --env-file=.env.local scripts/google-check.ts",
+    "demo:upgrade": "tsx --env-file=.env.local scripts/demo-upgrade.ts"
   },
   "dependencies": {
     "@neondatabase/serverless": "^1.1.0",

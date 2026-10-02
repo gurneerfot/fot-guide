@@ -1,14 +1,16 @@
 /**
- * Proves the Google setup works end to end, without touching the database:
- * creates one event with a Meet link on the owner's calendar, prints the link,
- * then deletes the event again.
+ * Proves the Google setup works end to end, without touching the database or
+ * emailing anyone: creates an event with a new Meet call, a second event that
+ * joins the same call (as a second booking in a slot would), checks both carry
+ * the same link, then deletes both.
  *
  *   pnpm google:check
  *
- * Run it after `pnpm google:auth`, and again whenever Meet links stop appearing.
+ * Run it after `pnpm google:auth`, and again whenever bookings report a
+ * Google error.
  */
 import { randomUUID } from 'node:crypto'
-import { createMeetEvent, deleteMeetEvent, googleConfigured } from '../lib/demo/google'
+import { createDemoEvent, deleteDemoEvent, googleConfigured } from '../lib/demo/google'
 
 async function main() {
   if (!googleConfigured()) {
@@ -20,14 +22,25 @@ async function main() {
   const startsAt = new Date(Date.now() + 24 * 60 * 60_000)
   startsAt.setMinutes(0, 0, 0)
   const endsAt = new Date(startsAt.getTime() + 30 * 60_000)
+  const event = { startsAt, endsAt, summary: 'google:check test — deleted at once', description: 'Test event.' }
 
-  console.log('Creating a test event with a Meet link…')
-  const event = await createMeetEvent({ slotId: randomUUID(), startsAt, endsAt })
-  console.log(`  ok   Meet link: ${event.meetUrl}`)
+  const created: string[] = []
+  try {
+    console.log('Creating a test event with a new Meet call…')
+    const first = await createDemoEvent({ ...event, requestId: randomUUID(), conference: null })
+    created.push(first.eventId)
+    console.log(`  ok   Meet link: ${first.meetUrl}`)
 
-  await deleteMeetEvent(event.eventId)
-  console.log('  ok   test event deleted again')
-  console.log('\nGoogle is set up. Every slot planned in /admin will get its own Meet link.')
+    console.log('Creating a second event in the same call…')
+    const second = await createDemoEvent({ ...event, requestId: randomUUID(), conference: first.conference })
+    created.push(second.eventId)
+    if (second.meetUrl !== first.meetUrl) throw new Error(`second event got a different link: ${second.meetUrl}`)
+    console.log(`  ok   same link: ${second.meetUrl}`)
+  } finally {
+    for (const id of created) await deleteDemoEvent(id, { notify: false })
+    if (created.length) console.log(`  ok   ${created.length} test event(s) deleted again`)
+  }
+  console.log('\nGoogle is set up. Each booking gets its own invite; bookings in one slot share one Meet link.')
 }
 
 main().catch((error) => {

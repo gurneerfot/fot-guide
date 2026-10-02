@@ -7,7 +7,8 @@ export type ListedSlot = {
   id: string
   iso: string
   capacity: number
-  meetUrl: string
+  /** Null until the first booking starts the slot's call. */
+  meetUrl: string | null
   bookings: {
     id: string
     name: string
@@ -77,9 +78,13 @@ export function SlotList({ title, slots, empty, past }: { title: string; slots: 
                           <span className="font-semibold text-ink">{timeLabel.format(new Date(slot.iso))}</span>
                           <span className="text-ink-soft">
                             {' '}· {slot.bookings.length} of {slot.capacity} booked ·{' '}
-                            <a href={slot.meetUrl} target="_blank" rel="noopener noreferrer" className="underline underline-offset-2">
-                              Meet link
-                            </a>
+                            {slot.meetUrl ? (
+                              <a href={slot.meetUrl} target="_blank" rel="noopener noreferrer" className="underline underline-offset-2">
+                                Meet link
+                              </a>
+                            ) : (
+                              'Meet link made at first booking'
+                            )}
                           </span>
                         </p>
                         {!past && slot.bookings.length === 0 && <RemoveSlotButton id={slot.id} />}

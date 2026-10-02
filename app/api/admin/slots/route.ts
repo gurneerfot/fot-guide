@@ -51,14 +51,6 @@ export async function POST(request: Request) {
           { error: 'Another slot starts within 30 minutes of that time.' },
           { status: 409 },
         )
-      case 'needs-link':
-        return NextResponse.json(
-          {
-            error:
-              'Google Calendar is not connected. Set GOOGLE_CLIENT_ID, GOOGLE_CLIENT_SECRET and GOOGLE_REFRESH_TOKEN.',
-          },
-          { status: 503 },
-        )
     }
   } catch (error) {
     console.error('[admin] slot creation failed', error)

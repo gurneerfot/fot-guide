@@ -9,6 +9,7 @@ import {
   uniqueIndex,
   index,
   check,
+  jsonb,
 } from 'drizzle-orm/pg-core'
 import { relations, sql } from 'drizzle-orm'
 
@@ -338,9 +339,21 @@ export const demoSlots = pgTable(
     startsAt: timestamp('starts_at', { withTimezone: true }).notNull(),
     /** How many people may book this call. Set per slot by the owner. */
     capacity: integer('capacity').notNull().default(2),
-    /** One call per slot, shared by every seat. Made when the slot is created. */
-    meetUrl: text('meet_url').notNull(),
-    /** Null when the link was pasted in by hand rather than made via Google Calendar. */
+    /**
+     * One call per slot, shared by every seat. Null until the first booking:
+     * planning a slot touches nothing in Google, and the call is started by
+     * whoever books first.
+     */
+    meetUrl: text('meet_url'),
+    /**
+     * The call's Google conference data, copied onto every later booking's
+     * event so they all land in the same Meet. Null until the first booking.
+     */
+    meetConference: jsonb('meet_conference'),
+    /**
+     * Only on slots planned before bookings had their own events: the one
+     * slot-wide calendar event that holds the call. Never set on new slots.
+     */
     googleEventId: text('google_event_id'),
     createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
   },
@@ -382,6 +395,14 @@ export const demoBookings = pgTable(
     timeZone: text('time_zone').notNull(),
     /** Throttling only — how many bookings one address makes in a day. */
     ip: text('ip'),
+    /** This booking's own event on the owner's calendar, with the booker as guest. */
+    googleEventId: text('google_event_id'),
+    /**
+     * Resend id of the "starts in an hour" email, scheduled ahead. Null until
+     * scheduled — Resend takes at most 30 days ahead, so a far-off booking is
+     * scheduled later by the daily job. Kept so removing a booking cancels it.
+     */
+    reminderEmailId: text('reminder_email_id'),
     createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
   },
   (t) => [

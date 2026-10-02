@@ -77,7 +77,7 @@ function monthGrid(year: number, month: number): (Date | null)[] {
 
 type Progress = { done: number; total: number; created: number; skipped: number; failed: string[] }
 
-export function SlotPlanner({ googleConnected, existing }: { googleConnected: boolean; existing: Existing[] }) {
+export function SlotPlanner({ existing }: { existing: Existing[] }) {
   const router = useRouter()
   // Null on the server and in the first client frame: "today" and the
   // calendar both depend on the owner's clock and zone, which the server lacks.
@@ -169,10 +169,6 @@ export function SlotPlanner({ googleConnected, existing }: { googleConnected: bo
 
   async function create() {
     setError(null)
-    if (!googleConnected) {
-      setError('Google Calendar is not connected, so no Meet links can be made.')
-      return
-    }
     const state: Progress = { done: 0, total: toCreate.length, created: 0, skipped: 0, failed: [] }
     setProgress({ ...state })
 
@@ -407,7 +403,7 @@ export function SlotPlanner({ googleConnected, existing }: { googleConnected: bo
           )}
           <button
             type="button"
-            disabled={busy || toCreate.length === 0 || !googleConnected}
+            disabled={busy || toCreate.length === 0}
             onClick={create}
             className="mt-3 w-full rounded-lg bg-ink px-5 py-3 font-semibold text-white hover:bg-ink-deep disabled:opacity-50"
           >

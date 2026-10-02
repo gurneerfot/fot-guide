@@ -1,12 +1,32 @@
 import { and, asc, count, eq, gt, gte, lt, sql } from 'drizzle-orm'
 import { db, demoBookings, demoSlots } from '@/db'
+import { BOOKING_CUTOFF_MINUTES, BOOKING_HORIZON_DAYS, SLOT_MINUTES, slotEnd } from './time'
 import {
-  BOOKING_CUTOFF_MINUTES,
-  BOOKING_HORIZON_DAYS,
-  SLOT_MINUTES,
-  slotEnd,
-} from './time'
-import { createMeetEvent, deleteMeetEvent, googleConfigured } from './google'
+  createDemoEvent,
+  deleteDemoEvent,
+  eventConference,
+  type Conference,
+} from './google'
+import { cancelReminder } from './reminders'
+
+/**
+ * Everything that reaches outside the database, passed in so the booking
+ * rules can be exercised against a stand-in calendar (`pnpm check:demo`)
+ * without creating real events or emailing anyone.
+ */
+export type DemoDeps = {
+  createEvent: typeof createDemoEvent
+  deleteEvent: typeof deleteDemoEvent
+  eventConference: typeof eventConference
+  cancelReminder: typeof cancelReminder
+}
+
+export const liveDeps: DemoDeps = {
+  createEvent: createDemoEvent,
+  deleteEvent: deleteDemoEvent,
+  eventConference,
+  cancelReminder,
+}
 
 /* ------------------------------------------------------------- public -- */
 
@@ -58,22 +78,41 @@ export type BookingResult =
   | { status: 'full' }
   | { status: 'already-in-slot' }
   | { status: 'already-booked'; startsAt: Date }
+  | { status: 'calendar-failed'; reason: string }
 
-type LockedSlot = { id: string; starts_at: Date | string; meet_url: string; capacity: number }
+type LockedSlot = {
+  id: string
+  starts_at: Date | string
+  capacity: number
+  meet_conference: Conference | null
+  google_event_id: string | null
+}
+
+/** Thrown inside the transaction so it rolls back; caught just outside it. */
+class CalendarFailed extends Error {}
 
 /**
- * Takes a seat, or says why not.
+ * Takes a seat and puts it on both calendars, or says why not.
  *
  * `FOR UPDATE` on the slot row makes every booking for one slot wait its turn,
  * so two people racing for the last seat are decided one after the other
  * rather than both reading "one left". The unique `(slot_id, seat)` index and
- * the seat-within-capacity trigger are the backstop if that ever stops being true.
+ * the seat-within-capacity trigger are the backstop if that ever stops being
+ * true.
+ *
+ * The calendar event is made while that lock is held. That is what lets the
+ * first two bookers of a slot arrive at the same moment and still end up in
+ * one Meet call: the second waits, then finds the call the first one started.
+ * If Google fails, the whole booking rolls back — a seat with no way to join
+ * the class is worse than "please try again".
  */
-export async function bookSeat(input: BookingInput): Promise<BookingResult> {
+export async function bookSeat(input: BookingInput, deps: DemoDeps = liveDeps): Promise<BookingResult> {
+  let createdEventId: string | null = null
   try {
     return await db.transaction(async (tx) => {
       const locked = await tx.execute(
-        sql`select id, starts_at, meet_url, capacity from demo_slots where id = ${input.slotId} for update`,
+        sql`select id, starts_at, capacity, meet_conference, google_event_id
+            from demo_slots where id = ${input.slotId} for update`,
       )
       const slot = locked.rows[0] as LockedSlot | undefined
       if (!slot) return { status: 'not-found' as const }
@@ -124,16 +163,52 @@ export async function bookSeat(input: BookingInput): Promise<BookingResult> {
         })
         .returning({ id: demoBookings.id })
 
+      // The slot's call: already started by an earlier booking, held by the
+      // one slot-wide event of a slot planned before this change, or — for
+      // the first booking — none yet, in which case this event starts it.
+      let event
+      try {
+        let conference = slot.meet_conference
+        if (!conference && slot.google_event_id) conference = await deps.eventConference(slot.google_event_id)
+        event = await deps.createEvent({
+          requestId: row.id,
+          startsAt,
+          endsAt: slotEnd(startsAt),
+          summary: `Français on Tips — free demo class (${input.name})`,
+          description:
+            'Your free 30-minute French demo class with Français on Tips. Join with the Google Meet link on this invitation.',
+          attendee: { email: input.email, name: input.name },
+          conference,
+        })
+      } catch (error) {
+        throw new CalendarFailed(error instanceof Error ? error.message : String(error))
+      }
+      createdEventId = event.eventId
+
+      await tx.update(demoBookings).set({ googleEventId: event.eventId }).where(eq(demoBookings.id, row.id))
+      if (!slot.meet_conference) {
+        await tx
+          .update(demoSlots)
+          .set({ meetConference: event.conference, meetUrl: event.meetUrl })
+          .where(eq(demoSlots.id, slot.id))
+      }
+
       return {
         status: 'booked' as const,
         bookingId: row.id,
         seat,
         capacity: slot.capacity,
         startsAt,
-        meetUrl: slot.meet_url,
+        meetUrl: event.meetUrl,
       }
     })
   } catch (error) {
+    if (error instanceof CalendarFailed) {
+      console.error('[demo] booking rolled back: calendar event failed —', error.message)
+      return { status: 'calendar-failed', reason: error.message }
+    }
+    // The event exists but the booking did not commit: take the invite back.
+    if (createdEventId) await deps.deleteEvent(createdEventId, { notify: true }).catch(() => {})
     // 23505 / 23514: a unique index or the capacity trigger said no — the lock
     // was bypassed somehow, and the schema did its job. To the booker it means
     // the same thing as full.
@@ -175,21 +250,13 @@ export async function listSlotsForAdmin() {
   }
 }
 
-export type CreateSlotResult =
-  | { status: 'created'; id: string }
-  | { status: 'overlaps' }
-  | { status: 'needs-link' }
+export type CreateSlotResult = { status: 'created'; id: string } | { status: 'overlaps' }
 
 /**
- * Makes the Meet link first, then the row. A Google failure therefore leaves
- * nothing behind here, and it surfaces to the owner at the moment they can
- * retry — never to a visitor mid-booking.
+ * Database only. Nothing goes on anyone's calendar until a person books, so
+ * a month of open slots does not fill the owner's calendar with empty events.
  */
-export async function createSlot(input: {
-  startsAt: Date
-  capacity: number
-  meetUrl?: string
-}): Promise<CreateSlotResult> {
+export async function createSlot(input: { startsAt: Date; capacity: number }): Promise<CreateSlotResult> {
   // One owner, one call at a time: no slot may start within 30 minutes of another.
   const window = SLOT_MINUTES * 60_000
   const [clash] = await db
@@ -204,31 +271,22 @@ export async function createSlot(input: {
     .limit(1)
   if (clash) return { status: 'overlaps' }
 
-  const id = crypto.randomUUID()
-  let meetUrl = input.meetUrl
-  let googleEventId: string | null = null
-
-  if (!meetUrl) {
-    if (!googleConfigured()) return { status: 'needs-link' }
-    const event = await createMeetEvent({ slotId: id, startsAt: input.startsAt, endsAt: slotEnd(input.startsAt) })
-    meetUrl = event.meetUrl
-    googleEventId = event.eventId
-  }
-
   try {
-    await db.insert(demoSlots).values({ id, startsAt: input.startsAt, capacity: input.capacity, meetUrl, googleEventId })
+    const [row] = await db
+      .insert(demoSlots)
+      .values({ startsAt: input.startsAt, capacity: input.capacity })
+      .returning({ id: demoSlots.id })
+    return { status: 'created', id: row.id }
   } catch (error) {
-    if (googleEventId) await deleteMeetEvent(googleEventId).catch(() => {})
     if (hasCode(error, '23505')) return { status: 'overlaps' }
     throw error
   }
-  return { status: 'created', id }
 }
 
 export type DeleteSlotResult = { status: 'deleted' } | { status: 'has-bookings' } | { status: 'not-found' }
 
 /** Empty slots only. A booked one has people expecting a call. */
-export async function deleteSlot(id: string): Promise<DeleteSlotResult> {
+export async function deleteSlot(id: string, deps: DemoDeps = liveDeps): Promise<DeleteSlotResult> {
   const result = await db.transaction(async (tx) => {
     const locked = await tx.execute(
       sql`select id, google_event_id from demo_slots where id = ${id} for update`,
@@ -246,16 +304,36 @@ export async function deleteSlot(id: string): Promise<DeleteSlotResult> {
     return { status: 'deleted' as const, googleEventId: slot.google_event_id }
   })
 
+  // Only slots planned before this change carry a slot-wide event.
   if (result.status === 'deleted' && result.googleEventId) {
-    await deleteMeetEvent(result.googleEventId).catch((error) =>
+    await deps.deleteEvent(result.googleEventId, { notify: false }).catch((error) =>
       console.error('[demo] slot deleted but its calendar event was not', error),
     )
   }
   return result.status === 'deleted' ? { status: 'deleted' } : result
 }
 
-/** For junk or a booker who asked to be taken off. Frees the seat. */
-export async function deleteBooking(id: string): Promise<boolean> {
-  const removed = await db.delete(demoBookings).where(eq(demoBookings.id, id)).returning({ id: demoBookings.id })
-  return removed.length > 0
+/**
+ * For junk or a booker who asked to be taken off. Frees the seat, takes the
+ * event off both calendars (Google tells the booker it was cancelled) and
+ * cancels their reminder. The slot keeps its call for whoever books next.
+ */
+export async function deleteBooking(id: string, deps: DemoDeps = liveDeps): Promise<boolean> {
+  const [removed] = await db
+    .delete(demoBookings)
+    .where(eq(demoBookings.id, id))
+    .returning({ googleEventId: demoBookings.googleEventId, reminderEmailId: demoBookings.reminderEmailId })
+  if (!removed) return false
+
+  if (removed.googleEventId) {
+    await deps
+      .deleteEvent(removed.googleEventId, { notify: true })
+      .catch((error) => console.error('[demo] booking removed but its calendar event was not', error))
+  }
+  if (removed.reminderEmailId) {
+    await deps
+      .cancelReminder(removed.reminderEmailId)
+      .catch((error) => console.error('[demo] booking removed but its reminder was not cancelled', error))
+  }
+  return true
 }

@@ -51,9 +51,12 @@ export RAZORPAY_KEY_ID= RAZORPAY_KEY_SECRET= RAZORPAY_WEBHOOK_SECRET=
 
 if [[ "${DEMO_EMAILS:-}" != "on" ]]; then
   export RESEND_API_KEY=
-  EMAILS="off (printed as 'skipping send' in this terminal)"
+  # Bookings still create real events on your Google Calendar (that is how
+  # the Meet link is made), but Google does not email the booker an invite.
+  export GOOGLE_SEND_INVITES=off
+  EMAILS="off (printed as 'skipping send' in this terminal); Google invites off"
 else
-  EMAILS="ON — real emails will be sent"
+  EMAILS="ON — real emails, reminders and Google invites will be sent"
 fi
 
 export ADMIN_PASSWORD_HASH

@@ -53,16 +53,16 @@ export default async function AdminPage() {
         <h2 className="font-display text-lg font-bold text-ink">Plan slots</h2>
         <p className="mt-1 text-sm text-ink-soft">
           Pick days and half-hour slots, choose seats — every day × slot is created. Times are in
-          your own time zone, and each slot gets its own Google Meet link automatically.
+          your own time zone. Nothing goes on your calendar until someone books: then the class
+          appears on yours and theirs, with a Google Meet link everyone in that slot shares.
         </p>
         {!google && (
           <p role="alert" className="mt-3 rounded-lg border border-rouge/30 bg-rouge-wash px-3.5 py-3 text-sm text-rouge">
-            Google Calendar is not connected, so slots cannot be created. Set GOOGLE_CLIENT_ID,
-            GOOGLE_CLIENT_SECRET and GOOGLE_REFRESH_TOKEN, then redeploy.
+            Google Calendar is not connected, so bookings will fail until it is. Set
+            GOOGLE_CLIENT_ID, GOOGLE_CLIENT_SECRET and GOOGLE_REFRESH_TOKEN, then redeploy.
           </p>
         )}
         <SlotPlanner
-          googleConnected={google}
           existing={upcoming.map((s) => ({ iso: s.startsAt.toISOString(), booked: s.bookings.length, capacity: s.capacity }))}
         />
       </section>

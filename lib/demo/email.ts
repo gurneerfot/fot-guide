@@ -1,11 +1,13 @@
 import { escapeHtml, send, shell } from '@/lib/email'
-import { adminTimeZone, formatSlot, slotEnd } from './time'
+import { adminTimeZone, formatSlot } from './time'
 
 /**
- * The two emails a booking sends: one to the booker in their zone, one to the
- * owner in theirs. Both best-effort — the booking is already saved and the
- * success screen shows the same time and link, so a bounce costs convenience,
- * not the call.
+ * The emails demo booking sends. All best-effort — the booking is already
+ * saved, Google has put it on the booker's calendar, and the success screen
+ * shows the same time and link, so a bounce costs convenience, not the call.
+ *
+ * No calendar file is attached: the Google invitation already puts the class
+ * on the booker's calendar, and a second copy from an .ics would duplicate it.
  */
 
 type Booking = {
@@ -21,43 +23,13 @@ type Booking = {
   meetUrl: string
 }
 
-function icsDate(at: Date): string {
-  return at.toISOString().replace(/[-:]/g, '').replace(/\.\d{3}/, '')
-}
-
-function icsText(value: string): string {
-  return value.replace(/\\/g, '\\\\').replace(/\n/g, '\\n').replace(/([,;])/g, '\\$1')
-}
-
-/**
- * A calendar file in UTC. Every calendar app converts it to the reader's own
- * zone on import, which is the most reliable time-zone handling there is.
- */
-function calendarInvite(b: Booking): { filename: string; content: string } {
-  const lines = [
-    'BEGIN:VCALENDAR',
-    'VERSION:2.0',
-    'PRODID:-//Francais on Tips//Demo class//EN',
-    'METHOD:PUBLISH',
-    'BEGIN:VEVENT',
-    `UID:${b.bookingId}@francaisontips.com`,
-    `DTSTAMP:${icsDate(new Date())}`,
-    `DTSTART:${icsDate(b.startsAt)}`,
-    `DTEND:${icsDate(slotEnd(b.startsAt))}`,
-    `SUMMARY:${icsText('Français on Tips — free demo class')}`,
-    `DESCRIPTION:${icsText(`Join on Google Meet: ${b.meetUrl}`)}`,
-    `LOCATION:${icsText(b.meetUrl)}`,
-    `URL:${b.meetUrl}`,
-    'END:VEVENT',
-    'END:VCALENDAR',
-  ]
-  return { filename: 'demo-class.ics', content: Buffer.from(lines.join('\r\n') + '\r\n').toString('base64') }
-}
-
 const button = (href: string, label: string) =>
   `<a href="${escapeHtml(href)}"
       style="display:inline-block;background:#2B4C9B;color:#fff;text-decoration:none;
              padding:12px 22px;border-radius:4px;font-weight:600;">${escapeHtml(label)}</a>`
+
+/** "Can't make it? Reply" has to reach the owner, not the sending address. */
+const replyToOwner = () => process.env.ADMIN_EMAIL || undefined
 
 export function sendDemoBookedToBooker(b: Booking) {
   const when = formatSlot(b.startsAt, b.timeZone)
@@ -68,23 +40,20 @@ export function sendDemoBookedToBooker(b: Booking) {
     </p>
     <p style="font-size:18px;line-height:1.5;font-weight:600;margin:0 0 6px;">${escapeHtml(when)}</p>
     <p style="font-size:14px;line-height:1.6;color:#5A6980;margin:0 0 24px;">
-      Shown in your time zone (${escapeHtml(b.timeZone)}). The attached calendar
-      file adds it to your calendar at the right local time.
+      Shown in your time zone (${escapeHtml(b.timeZone)}). You will also get a
+      Google Calendar invitation for it, and a reminder email an hour before.
     </p>
     ${button(b.meetUrl, 'Join on Google Meet')}
     <p style="font-size:14px;line-height:1.6;color:#5A6980;margin:24px 0 0;">
       Link: ${escapeHtml(b.meetUrl)}<br>
       The class is 30 minutes${b.capacity > 1 ? ' and you may share it with other learners' : ''}.
-      If you are let in from a waiting screen, that is normal — we admit you
-      when the class starts. Can&rsquo;t make it? Just reply to this email.
+      Can&rsquo;t make it? Just reply to this email.
     </p>`
   return send({
     to: b.email,
     subject: `Your demo class — ${when}`,
     html: shell(body),
-    attachments: [calendarInvite(b)],
-    // "Can't make it? Reply" has to reach the owner, not the sending address.
-    replyTo: process.env.ADMIN_EMAIL || undefined,
+    replyTo: replyToOwner(),
   })
 }
 
@@ -102,7 +71,7 @@ export function sendDemoBookedToAdmin(b: Booking) {
   const body = `
     <h1 style="font-size:22px;margin:0 0 16px;">New demo booking</h1>
     <p style="font-size:18px;line-height:1.5;font-weight:600;margin:0 0 6px;">${escapeHtml(when)}</p>
-    <p style="font-size:14px;color:#5A6980;margin:0 0 20px;">Seat ${b.seat} of ${b.capacity}</p>
+    <p style="font-size:14px;color:#5A6980;margin:0 0 20px;">Seat ${b.seat} of ${b.capacity} · on your Google Calendar</p>
     <table style="font-size:15px;line-height:1.5;border-collapse:collapse;margin:0 0 24px;">
       ${row('Name', b.name)}
       ${row('Email', b.email)}
@@ -117,6 +86,59 @@ export function sendDemoBookedToAdmin(b: Booking) {
     html: shell(body),
     // Replying to the notice writes to the booker.
     replyTo: b.email,
-    attachments: [calendarInvite(b)],
   })
+}
+
+/** Scheduled at booking time for an hour before the class; see reminders.ts. */
+export function sendDemoReminder(r: {
+  name: string
+  email: string
+  timeZone: string
+  startsAt: Date
+  meetUrl: string
+  scheduledAt: Date
+}) {
+  const when = formatSlot(r.startsAt, r.timeZone)
+  const body = `
+    <h1 style="font-size:22px;margin:0 0 16px;">Bonjour ${escapeHtml(r.name)},</h1>
+    <p style="font-size:16px;line-height:1.6;margin:0 0 20px;">
+      A quick reminder: your free demo class starts in <strong>one hour</strong>.
+    </p>
+    <p style="font-size:18px;line-height:1.5;font-weight:600;margin:0 0 24px;">${escapeHtml(when)}</p>
+    ${button(r.meetUrl, 'Join on Google Meet')}
+    <p style="font-size:14px;line-height:1.6;color:#5A6980;margin:24px 0 0;">
+      Link: ${escapeHtml(r.meetUrl)}<br>
+      Join a minute or two early from a quiet place, with headphones if you have
+      them. Can&rsquo;t make it after all? Just reply to this email.
+    </p>`
+  return send({
+    to: r.email,
+    subject: 'Your Français on Tips demo class starts in 1 hour',
+    html: shell(body),
+    replyTo: replyToOwner(),
+    scheduledAt: r.scheduledAt,
+  })
+}
+
+/**
+ * When Google refuses a booking's calendar event, the visitor is told to try
+ * again — and the owner is told why, since a revoked Google sign-in means
+ * every booking fails until it is fixed.
+ */
+export function sendCalendarFailureAlert(reason: string) {
+  const to = process.env.ADMIN_EMAIL
+  if (!to) return Promise.resolve({ sent: false, reason: 'not-configured' })
+  const body = `
+    <h1 style="font-size:22px;margin:0 0 16px;">A demo booking just failed</h1>
+    <p style="font-size:16px;line-height:1.6;margin:0 0 16px;">
+      Someone tried to book a demo class, but Google Calendar refused to create
+      the event, so the booking was not saved and they were asked to try again.
+    </p>
+    <p style="font-size:14px;line-height:1.6;color:#5A6980;margin:0 0 16px;">Google said: ${escapeHtml(reason.slice(0, 500))}</p>
+    <p style="font-size:16px;line-height:1.6;margin:0;">
+      If it says the sign-in expired or was revoked, run <code>pnpm google:auth</code>,
+      put the new GOOGLE_REFRESH_TOKEN in Vercel and redeploy. <code>pnpm google:check</code>
+      confirms it works.
+    </p>`
+  return send({ to, subject: 'Action needed: demo bookings are failing (Google Calendar)', html: shell(body) })
 }

@@ -1,7 +1,8 @@
 import { NextResponse, after } from 'next/server'
 import { z } from 'zod'
 import { clientIp } from '@/lib/auth/rate-limit'
-import { sendDemoBookedToAdmin, sendDemoBookedToBooker } from '@/lib/demo/email'
+import { sendCalendarFailureAlert, sendDemoBookedToAdmin, sendDemoBookedToBooker } from '@/lib/demo/email'
+import { scheduleReminder } from '@/lib/demo/reminders'
 import { bookSeat, bookingsFromIpToday } from '@/lib/demo/slots'
 import { formatSlot, safeTimeZone } from '@/lib/demo/time'
 import { verifyTurnstile } from '@/lib/demo/turnstile'
@@ -94,6 +95,13 @@ export async function POST(request: Request) {
         },
         { status: 409 },
       )
+    case 'calendar-failed':
+      // Nothing was saved. The owner hears why; the visitor can simply retry.
+      after(() => sendCalendarFailureAlert(result.reason).then(() => undefined))
+      return NextResponse.json(
+        { error: 'We could not set up the video call just now. Please try again in a minute.' },
+        { status: 503 },
+      )
   }
 
   const booking = {
@@ -109,10 +117,17 @@ export async function POST(request: Request) {
     meetUrl: result.meetUrl,
   }
 
-  // After the response: the booker sees "booked" without waiting on two
-  // round trips to Resend, and a slow or failed send cannot undo a seat.
+  // After the response: the booker sees "booked" without waiting on Resend,
+  // and a slow or failed send cannot undo a seat. A reminder that fails to
+  // schedule here is retried by the daily job.
   after(async () => {
-    await Promise.all([sendDemoBookedToBooker(booking), sendDemoBookedToAdmin(booking)])
+    await Promise.all([
+      sendDemoBookedToBooker(booking),
+      sendDemoBookedToAdmin(booking),
+      scheduleReminder({ id: booking.bookingId, ...booking }).catch((error) =>
+        console.error('[demo] reminder not scheduled at booking; the daily job will retry', error),
+      ),
+    ])
   })
 
   return NextResponse.json({
