@@ -341,7 +341,8 @@ function ProductCard({
           <Badge className="size-4 shrink-0 text-rouge" />
           {isReader
             ? `45 days of access${product.pageCount > 0 ? ` · ${product.pageCount} pages` : ''}`
-            : 'Arrange on WhatsApp after purchase'}
+            : // Every mock slug starts with "mock": mock-reading … mocks-all-four.
+              `${product.slug.startsWith('mock') ? '45 days of access · ' : ''}Arrange on WhatsApp after purchase`}
         </p>
 
         <button
