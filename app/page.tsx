@@ -19,8 +19,8 @@ export default async function StorefrontPage() {
           {/* The main site marks every section heading this way. */}
           <span aria-hidden className="mx-auto mt-6 block h-[3px] w-16 rounded-full bg-rouge" />
           <p className="mx-auto mt-7 max-w-xl text-read text-ink-soft">
-            A guide you read online, mock tests marked by us, and one-to-one
-            lessons. Add what you need and pay for it together — choose Canadian
+            A guide you read online, mock tests marked by us, and a
+            ten-lesson plan. Add what you need and pay for it together — choose Canadian
             dollars or Indian rupees, with everything included.
           </p>
         </header>

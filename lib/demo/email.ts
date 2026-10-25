@@ -36,7 +36,7 @@ export function sendDemoBookedToBooker(b: Booking) {
   const body = `
     <h1 style="font-size:22px;margin:0 0 16px;">Bonjour ${escapeHtml(b.name)},</h1>
     <p style="font-size:16px;line-height:1.6;margin:0 0 20px;">
-      Your free demo class is booked.
+      Your free TEF demo class is booked.
     </p>
     <p style="font-size:18px;line-height:1.5;font-weight:600;margin:0 0 6px;">${escapeHtml(when)}</p>
     <p style="font-size:14px;line-height:1.6;color:#5A6980;margin:0 0 24px;">
@@ -51,7 +51,7 @@ export function sendDemoBookedToBooker(b: Booking) {
     </p>`
   return send({
     to: b.email,
-    subject: `Your demo class — ${when}`,
+    subject: `Your TEF demo class — ${when}`,
     html: shell(body),
     replyTo: replyToOwner(),
   })
@@ -102,7 +102,7 @@ export function sendDemoReminder(r: {
   const body = `
     <h1 style="font-size:22px;margin:0 0 16px;">Bonjour ${escapeHtml(r.name)},</h1>
     <p style="font-size:16px;line-height:1.6;margin:0 0 20px;">
-      A quick reminder: your free demo class starts in <strong>one hour</strong>.
+      A quick reminder: your free TEF demo class starts in <strong>one hour</strong>.
     </p>
     <p style="font-size:18px;line-height:1.5;font-weight:600;margin:0 0 24px;">${escapeHtml(when)}</p>
     ${button(r.meetUrl, 'Join on Google Meet')}
@@ -113,7 +113,7 @@ export function sendDemoReminder(r: {
     </p>`
   return send({
     to: r.email,
-    subject: 'Your Français on Tips demo class starts in 1 hour',
+    subject: 'Your Français on Tips TEF demo class starts in 1 hour',
     html: shell(body),
     replyTo: replyToOwner(),
     scheduledAt: r.scheduledAt,

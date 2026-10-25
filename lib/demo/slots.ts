@@ -174,9 +174,9 @@ export async function bookSeat(input: BookingInput, deps: DemoDeps = liveDeps): 
           requestId: row.id,
           startsAt,
           endsAt: slotEnd(startsAt),
-          summary: `Français on Tips — free demo class (${input.name})`,
+          summary: `Français on Tips — free TEF demo class (${input.name})`,
           description:
-            'Your free 30-minute French demo class with Français on Tips. Join with the Google Meet link on this invitation.',
+            'Your free 30-minute TEF demo class with Français on Tips. Join with the Google Meet link on this invitation.',
           attendee: { email: input.email, name: input.name },
           conference,
         })
