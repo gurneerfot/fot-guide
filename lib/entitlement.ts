@@ -14,12 +14,29 @@ export type Product = typeof products.$inferSelect
  * the cards would swap places on a refresh for no reason the visitor can see.
  */
 export async function activeProducts(): Promise<Product[]> {
-  return db
+  const rows = await db
     .select()
     .from(products)
     .where(eq(products.isActive, true))
     .orderBy(products.kind, products.priceCents, products.createdAt)
+  // The owner's chosen order. Anything not listed keeps the query's order, after these.
+  const rank = (slug: string) => {
+    const index = SHOP_ORDER.indexOf(slug)
+    return index === -1 ? SHOP_ORDER.length : index
+  }
+  return rows.sort((a, b) => rank(a.slug) - rank(b.slug))
 }
+
+const SHOP_ORDER = [
+  'guide-expression-orale-a',
+  'guide-expression-orale-b',
+  'guide-expression-ecrite-a',
+  'guide-expression-ecrite-b',
+  'mock-listening',
+  'mock-reading',
+  'mock-speaking',
+  'mock-writing',
+]
 
 export async function productBySlug(slug: string): Promise<Product | null> {
   const [row] = await db.select().from(products).where(eq(products.slug, slug)).limit(1)
